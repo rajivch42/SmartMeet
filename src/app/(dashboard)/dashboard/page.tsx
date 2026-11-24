@@ -1,13 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import {
   Calendar,
   Clock,
   CheckCircle2,
   Sparkles,
   Layers,
-  RotateCcw,
   CheckSquare,
   ShieldCheck,
   FileText,
@@ -26,39 +24,19 @@ export default function DashboardPage() {
     taskCount,
     syncedCount,
     timeSaved,
-    resetDemoState,
     syncCalendar,
     syncingCalendar,
   } = useDashboard();
-  const [resetting, setResetting] = useState<boolean>(false);
-  const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  const handleResetDemo = async () => {
-    try {
-      setResetting(true);
-      setResetMsg(null);
-      const ok = await resetDemoState();
-      if (ok) {
-        setResetMsg('Demo environment reset and re-seeded with pristine state!');
-      } else {
-        setResetMsg('Failed to reset demo state.');
-      }
-    } catch {
-      setResetMsg('Failed to reset demo state.');
-    } finally {
-      setResetting(false);
-      setTimeout(() => setResetMsg(null), 4000);
-    }
-  };
+  // Unified completion predicate: status summarized/transcribed or has recorded decisions/summaries
+  const isMeetingCompleted = (m: Meeting) =>
+    m.status === 'summarized' ||
+    m.status === 'transcribed' ||
+    (m.decision_count != null && m.decision_count > 0);
 
   // Strictly segregate upcoming vs completed meetings
-  const upcomingMeetings = meetings.filter(
-    (m) => m.status !== 'summarized' && m.status !== 'transcribed'
-  );
-
-  const completedMeetings = meetings.filter(
-    (m) => m.status === 'summarized' || m.status === 'transcribed'
-  );
+  const upcomingMeetings = meetings.filter((m) => !isMeetingCompleted(m));
+  const completedMeetings = meetings.filter((m) => isMeetingCompleted(m));
 
   // Show only recent 5 on Dashboard; rest in Meetings tab per request
   const displayedCompleted = completedMeetings.slice(0, 5);
@@ -121,27 +99,12 @@ export default function DashboardPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <button
-            onClick={handleResetDemo}
-            disabled={resetting}
-            className="btn btn-secondary btn-sm"
-            title="Reset dataset to initial pristine demo state"
-          >
-            <RotateCcw size={13} className={resetting ? 'status-dot-pulse' : ''} />
-            {resetting ? 'Resetting...' : 'Reset Demo State'}
-          </button>
           <div className="badge badge-success" style={{ padding: '0.35rem 0.75rem', boxShadow: '0 0 12px rgba(16, 185, 129, 0.2)' }}>
             <ShieldCheck size={14} style={{ marginRight: 'var(--space-1)' }} />
-            All 6 Phases Operational
+            Operational
           </div>
         </div>
       </div>
-
-      {resetMsg && (
-        <div className="badge badge-info" style={{ padding: 'var(--space-2) var(--space-4)', fontSize: '0.85rem' }}>
-          <Sparkles size={16} style={{ marginRight: 'var(--space-2)' }} /> {resetMsg}
-        </div>
-      )}
 
       {/* Quick Stats Bar (Hero + Two Supporting) */}
       {meetingsLoading ? (

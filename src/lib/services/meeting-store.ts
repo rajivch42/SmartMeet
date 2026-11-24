@@ -194,6 +194,62 @@ export async function upsertMeetings(meetings: Partial<Meeting>[]): Promise<Meet
       const userId = user?.id || 'demo-user-0000-0000-0000-000000000000';
 
       for (const m of meetings) {
+        let existingId: string | null = m.id || null;
+        let existingRecord: { id: string; status: MeetingStatus } | null = null;
+
+        if (existingId) {
+          const { data: existing } = await admin
+            .from('meetings')
+            .select('id, status')
+            .eq('id', existingId)
+            .maybeSingle();
+          if (existing) {
+            existingRecord = existing;
+          }
+        } else if (m.external_calendar_id) {
+          const { data: existing } = await admin
+            .from('meetings')
+            .select('id, status')
+            .eq('user_id', userId)
+            .eq('external_calendar_id', m.external_calendar_id)
+            .maybeSingle();
+          if (existing) {
+            existingRecord = existing;
+            existingId = existing.id;
+          }
+        }
+
+        // Determine if this meeting already has summary records in database
+        let hasSummary = false;
+        if (existingId) {
+          const { data: sm } = await admin
+            .from('summaries')
+            .select('id')
+            .eq('meeting_id', existingId)
+            .limit(1);
+          if (sm && sm.length > 0) {
+            hasSummary = true;
+          }
+        }
+
+        let finalStatus: MeetingStatus = (m.status as MeetingStatus);
+        if (hasSummary) {
+          finalStatus = 'summarized';
+        } else if (!finalStatus) {
+          if (existingRecord?.status && existingRecord.status !== 'scheduled') {
+            finalStatus = existingRecord.status;
+          } else {
+            finalStatus = 'scheduled';
+          }
+        } else if (
+          existingRecord?.status &&
+          ['summarized', 'transcribed', 'in_progress', 'completed'].includes(existingRecord.status) &&
+          finalStatus === 'scheduled'
+        ) {
+          // Never demote a summarized/transcribed/in-progress meeting back to scheduled on calendar sync
+          finalStatus = existingRecord.status;
+        }
+
         const meetingPayload = {
           user_id: userId,
           external_calendar_id: m.external_calendar_id || null,
@@ -202,23 +258,9 @@ export async function upsertMeetings(meetings: Partial<Meeting>[]): Promise<Meet
           start_time: m.start_time || new Date().toISOString(),
           end_time: m.end_time || new Date().toISOString(),
           attendees: JSON.stringify(m.attendees || []),
-          status: (m.status as MeetingStatus) || 'scheduled',
+          status: finalStatus,
           updated_at: new Date().toISOString(),
         };
-
-        let existingId: string | null = m.id || null;
-
-        if (!existingId && m.external_calendar_id) {
-          const { data: existing } = await admin
-            .from('meetings')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('external_calendar_id', m.external_calendar_id)
-            .maybeSingle();
-          if (existing?.id) {
-            existingId = existing.id;
-          }
-        }
 
         let resultRecord = null;
         if (existingId) {
@@ -378,8 +420,14 @@ export async function getMeetingsList(): Promise<Meeting[]> {
               ? transcriptsList[0].duration_seconds
               : null;
 
+            const hasSummary = Array.isArray(item.summaries) && item.summaries.length > 0;
+            const effectiveStatus: MeetingStatus = (hasSummary || item.status === 'summarized')
+              ? 'summarized'
+              : (item.status as MeetingStatus) || 'scheduled';
+
             return {
               ...item,
+              status: effectiveStatus,
               attendees: typeof item.attendees === 'string' ? JSON.parse(item.attendees) : item.attendees,
               decision_count: decisionCount,
               tasks_count: tasksCount,
@@ -628,20 +676,37 @@ export async function saveSummary(summary: Partial<Summary>): Promise<Summary> {
 export async function getSummaryByMeetingId(meetingId: string): Promise<Summary | null> {
   if (!isPlaceholderConfig()) {
     try {
-      const supabase = createServerSupabaseClient();
-      const { data, error } = await supabase
+      const admin = createAdminClient();
+      const { data, error } = await admin
         .from('summaries')
         .select('*')
         .eq('meeting_id', meetingId)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         return {
           ...data,
           decisions: typeof data.decisions === 'string' ? JSON.parse(data.decisions) : data.decisions,
           discussion_points: typeof data.discussion_points === 'string' ? JSON.parse(data.discussion_points) : data.discussion_points,
+        };
+      }
+
+      const supabase = createServerSupabaseClient();
+      const { data: userSummary, error: userError } = await supabase
+        .from('summaries')
+        .select('*')
+        .eq('meeting_id', meetingId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!userError && userSummary) {
+        return {
+          ...userSummary,
+          decisions: typeof userSummary.decisions === 'string' ? JSON.parse(userSummary.decisions) : userSummary.decisions,
+          discussion_points: typeof userSummary.discussion_points === 'string' ? JSON.parse(userSummary.discussion_points) : userSummary.discussion_points,
         };
       }
     } catch (err) {
@@ -721,15 +786,26 @@ export async function saveActionItems(
 export async function getActionItemsByMeetingId(meetingId: string): Promise<ActionItem[]> {
   if (!isPlaceholderConfig()) {
     try {
-      const supabase = createServerSupabaseClient();
-      const { data, error } = await supabase
+      const admin = createAdminClient();
+      const { data, error } = await admin
         .from('action_items')
         .select('*')
         .eq('meeting_id', meetingId)
         .order('created_at', { ascending: true });
 
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
         return data as ActionItem[];
+      }
+
+      const supabase = createServerSupabaseClient();
+      const { data: userItems, error: userError } = await supabase
+        .from('action_items')
+        .select('*')
+        .eq('meeting_id', meetingId)
+        .order('created_at', { ascending: true });
+
+      if (!userError && userItems && userItems.length > 0) {
+        return userItems as ActionItem[];
       }
     } catch (err) {
       console.warn('[MEETING_STORE] Error querying action items from Supabase:', err);

@@ -188,9 +188,14 @@ export default function LoginPage() {
             textAlign: 'center',
             fontSize: '0.75rem',
             color: 'var(--text-muted)',
+            lineHeight: 1.5,
           }}
         >
           By signing in, you agree to grant read-only access to your Google Calendar for automated meeting bot scheduling.
+          <br />
+          <Link href="/privacy" style={{ color: 'var(--blue)', textDecoration: 'underline' }}>
+            Privacy Policy
+          </Link>
         </p>
       </div>
     </div>

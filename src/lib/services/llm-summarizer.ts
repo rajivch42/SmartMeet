@@ -71,20 +71,33 @@ async function callGeminiSummarizer(
 ): Promise<StructuredSummaryResult> {
   const attendeeContext = attendees.map((a) => `${a.name || 'Attendee'} (${a.email})`).join(', ');
 
-  const systemInstruction = `You are an expert executive meeting assistant. Analyze the provided meeting transcript and output a single JSON object.
-Schema:
+  const systemInstruction = `You are an elite corporate Chief of Staff and technical meeting analyst.
+Analyze the provided meeting transcript and output a single JSON object.
+
+CRITICAL INSTRUCTIONS FOR ACTION ITEMS & DELIVERABLES:
+1. Extract ALL concrete commitments, deliverables, and assigned tasks discussed by the attendees.
+2. If any participant says "I will take ownership of...", "I will do...", "I will complete/finish...", "I'll handle...", or assigns a task to someone, you MUST capture it as an action item.
+3. For each action item:
+   - "title": Actionable task title starting with an imperative verb (e.g. "Design PostgreSQL Database Migration Scripts", "Set up GitHub Actions CI/CD Pipeline").
+   - "description": Contextual explanation of what needs to be done based on the transcript dialogue.
+   - "assignee_name": The exact name of the attendee who took ownership or was assigned. Match names from the transcript or known attendees list. Do NOT use "Unassigned" if a person committed to it.
+   - "assignee_email": If the assignee's email is in Known Attendees, include it; otherwise null.
+   - "due_date": If a deadline or time was mentioned (e.g., "Friday 5pm", "Thursday at 4pm"), format as a reasonable ISO 8601 string or null; otherwise null.
+   - "priority": "high", "medium", or "low" based on the task's urgency or importance.
+
+You MUST respond strictly with a valid JSON object matching this schema:
 {
-  "executive_summary": "A concise 2-3 sentence overview of what was discussed in the transcript",
-  "decisions": ["Concrete decision made (empty array if none)"],
-  "discussion_points": [{"topic": "Topic Name", "summary": "Brief summary of discussion"}],
+  "executive_summary": "A concise 2-3 sentence overview of what was discussed and decided",
+  "decisions": ["Concrete architectural, product, or team decisions confirmed (empty array if none)"],
+  "discussion_points": [{"topic": "Topic Name", "summary": "Detailed summary of discussion"}],
   "action_items": [
     {
       "title": "Clear actionable task title",
       "description": "Specific context from transcript",
-      "assignee_name": "Full name of person responsible or unassigned",
+      "assignee_name": "Full name of person responsible",
       "assignee_email": "Email address or null",
       "due_date": null,
-      "priority": "low"
+      "priority": "high"
     }
   ]
 }`;
@@ -224,13 +237,47 @@ function generateExtractiveSummary(
     },
   ];
 
+  const fallbackActionItems: {
+    title: string;
+    description: string;
+    assignee_name: string;
+    assignee_email: string | null;
+    due_date: string | null;
+    priority: ActionItemPriority;
+  }[] = [];
+
+  const commitmentRegex = /(?:I will take ownership of|I will take full ownership of|I will handle|I will set up|I will design|I will finish|I will complete|I will do|I will create|I'll)\s+([^.!\n]+)/i;
+
+  for (const line of lines) {
+    const match = line.match(/(?:\[\d{2}:\d{2}\]\s*)?([^:]+):\s*(.*)/);
+    const speaker = match ? match[1].trim() : primarySpeaker;
+    const text = match ? match[2].trim() : line;
+    const commitMatch = text.match(commitmentRegex);
+    if (commitMatch && commitMatch[1]) {
+      const taskPhrase = commitMatch[1].trim();
+      if (taskPhrase.length > 5 && !taskPhrase.toLowerCase().includes('wrap up') && !taskPhrase.toLowerCase().includes('bye')) {
+        const attendeeMatch = attendees.find(
+          (a) => a.name && speaker.toLowerCase().includes(a.name.toLowerCase())
+        );
+        fallbackActionItems.push({
+          title: taskPhrase.charAt(0).toUpperCase() + taskPhrase.slice(1),
+          description: text,
+          assignee_name: speaker,
+          assignee_email: attendeeMatch?.email || null,
+          due_date: null,
+          priority: 'high',
+        });
+      }
+    }
+  }
+
   return {
     executive_summary: executiveSummary,
     decisions: [
       'Meeting session concluded and transcribed successfully.',
     ],
     discussion_points: discussionPoints,
-    action_items: [],
+    action_items: fallbackActionItems,
     model_version: errorReason ? `local-extractive (${errorReason})` : 'local-extractive',
   };
 }

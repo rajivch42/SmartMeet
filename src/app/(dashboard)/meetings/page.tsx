@@ -21,13 +21,14 @@ export default function MeetingsPage() {
   const { meetings, meetingsLoading } = useDashboard();
   const [activeTab, setActiveTab] = useState<'all' | 'upcoming' | 'completed'>('all');
 
-  const upcomingMeetings = meetings.filter(
-    (m) => m.status !== 'summarized' && m.status !== 'transcribed'
-  );
+  // Unified completion predicate: status summarized/transcribed or has recorded decisions/summaries
+  const isMeetingCompleted = (m: Meeting) =>
+    m.status === 'summarized' ||
+    m.status === 'transcribed' ||
+    (m.decision_count != null && m.decision_count > 0);
 
-  const completedMeetings = meetings.filter(
-    (m) => m.status === 'summarized' || m.status === 'transcribed'
-  );
+  const upcomingMeetings = meetings.filter((m) => !isMeetingCompleted(m));
+  const completedMeetings = meetings.filter((m) => isMeetingCompleted(m));
 
   const formatMeetingDate = (dateStr: string) => {
     try {

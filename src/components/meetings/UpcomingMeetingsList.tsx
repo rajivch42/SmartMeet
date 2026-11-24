@@ -43,10 +43,14 @@ export default function UpcomingMeetingsList({
   const [modalOpen, setModalOpen] = useState(false);
   const [syncingBotId, setSyncingBotId] = useState<string | null>(null);
 
-  // Filter strictly to meetings that are UPCOMING or currently in progress
-  const upcomingMeetings = meetings.filter(
-    (m) => m.status !== 'summarized' && m.status !== 'transcribed'
-  );
+  // Unified completion predicate: status summarized/transcribed or has recorded decisions/summaries
+  const isMeetingCompleted = (m: Meeting) =>
+    m.status === 'summarized' ||
+    m.status === 'transcribed' ||
+    (m.decision_count != null && m.decision_count > 0);
+
+  // Filter strictly to meetings that are truly UPCOMING or currently in progress
+  const upcomingMeetings = meetings.filter((m) => !isMeetingCompleted(m));
 
   const displayedMeetings = maxItems ? upcomingMeetings.slice(0, maxItems) : upcomingMeetings;
 

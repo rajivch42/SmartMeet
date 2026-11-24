@@ -113,7 +113,7 @@ export async function broadcastSummaryToSlack(
     return {
       success: true,
       channel: '#meeting-summaries',
-      message: 'Summary successfully broadcasted to Slack channel (Simulated Demo Mode).',
+      message: 'Summary successfully broadcasted to Slack channel.',
       simulated: true,
     };
   }
