@@ -36,6 +36,7 @@ export interface Integration {
 
 export type MeetingStatus =
   | 'scheduled'
+  | 'skipped'
   | 'bot_dispatched'
   | 'in_progress'
   | 'transcribed'

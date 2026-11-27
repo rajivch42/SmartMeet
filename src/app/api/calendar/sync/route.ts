@@ -83,13 +83,14 @@ export async function POST(request: NextRequest) {
     // Fetch real events from Google Calendar (strictly NO fallback demo data)
     const events = await fetchUpcomingGoogleEvents(activeAccessToken, false);
 
-    // Clean up any historical dummy demo meetings for this user from DB and in-memory cache
+    // Clean up any historical dummy demo meetings or non-video travel reservations for this user
     clearInMemoryDemoMeetings();
     await admin
       .from('meetings')
       .delete()
       .eq('user_id', user.id)
-      .like('external_calendar_id', 'demo-meet%');
+      .eq('status', 'scheduled')
+      .or('external_calendar_id.like.demo-meet%,meeting_url.like.%/abc-%,title.ilike.%Train to%');
 
     // Upsert real events if discovered
     if (events.length > 0) {
@@ -105,6 +106,33 @@ export async function POST(request: NextRequest) {
       }));
 
       await upsertMeetings(meetingPayloads);
+    }
+
+    // Cancellation / deletion cleanup:
+    // Only delete meetings that are strictly 'scheduled' and NOT completed/summarized/transcribed
+    const currentCalendarIds = new Set(events.map((e) => e.externalCalendarId));
+    const { data: existingScheduled } = await admin
+      .from('meetings')
+      .select('id, external_calendar_id, status, decision_count')
+      .eq('user_id', user.id)
+      .eq('status', 'scheduled')
+      .is('decision_count', null)
+      .not('external_calendar_id', 'is', null);
+
+    if (existingScheduled && existingScheduled.length > 0) {
+      const idsToRemove = existingScheduled
+        .filter(
+          (m) =>
+            m.external_calendar_id &&
+            !currentCalendarIds.has(m.external_calendar_id) &&
+            m.status === 'scheduled' &&
+            (!m.decision_count || m.decision_count === 0)
+        )
+        .map((m) => m.id);
+
+      if (idsToRemove.length > 0) {
+        await admin.from('meetings').delete().in('id', idsToRemove);
+      }
     }
 
     // Query all meetings currently in the database for this user

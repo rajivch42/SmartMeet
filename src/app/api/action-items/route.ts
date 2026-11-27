@@ -1,10 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   getAllActionItems,
+  getActionItemById,
+  updateActionItem,
   saveActionItems,
   deleteActionItem,
   getMeetingsList,
 } from '@/lib/services/meeting-store';
+import { updateJiraIssueDueDate } from '@/lib/services/jira';
 import { z } from 'zod';
 
 const createActionItemSchema = z.object({
@@ -80,5 +83,54 @@ export async function DELETE(request: NextRequest) {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to delete action item';
     return NextResponse.json({ success: false, error: { code: 'DELETE_FAILED', message: msg } }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, due_date } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: { code: 'MISSING_ID', message: 'Action item ID is required.' } },
+        { status: 400 }
+      );
+    }
+
+    const existing = await getActionItemById(id);
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: { code: 'NOT_FOUND', message: 'Action item not found.' } },
+        { status: 404 }
+      );
+    }
+
+    // Update in database (Supabase + In-Memory)
+    const updated = await updateActionItem(id, {
+      due_date: due_date || null,
+    });
+
+    let jiraSyncResult = null;
+    // If this task was already pushed to Jira, update the Jira ticket's due date in real-time
+    if (existing.jira_issue_key) {
+      try {
+        jiraSyncResult = await updateJiraIssueDueDate(existing.jira_issue_key, due_date || null);
+      } catch (err: any) {
+        console.warn('[ACTION_ITEMS] Error updating Jira due date:', err.message);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: updated,
+      jiraSync: jiraSyncResult,
+      message: existing.jira_issue_key
+        ? `Deadline updated and synced to Jira issue ${existing.jira_issue_key}.`
+        : 'Deadline updated.',
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to update action item';
+    return NextResponse.json({ success: false, error: { code: 'UPDATE_FAILED', message: msg } }, { status: 500 });
   }
 }

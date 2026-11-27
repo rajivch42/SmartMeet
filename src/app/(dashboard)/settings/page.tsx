@@ -35,6 +35,8 @@ export default function SettingsPage() {
   const [jiraProjectKey, setJiraProjectKey] = useState('KAN');
   const [hasValidToken, setHasValidToken] = useState(false);
   const [showToken, setShowToken] = useState(false);
+  const [hasGoogleConnected, setHasGoogleConnected] = useState(false);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
 
   // Status & Verification States
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -43,13 +45,30 @@ export default function SettingsPage() {
   const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
-    // 1. Fetch Supabase user
+    // 1. Fetch Supabase user and check connected identities/integrations
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (data?.user?.email) {
         setUserEmail(data.user.email);
+        const identities = data.user.identities || [];
+        const isGoogleIdentity = identities.some((i) => i.provider === 'google');
+        if (isGoogleIdentity) {
+          setHasGoogleConnected(true);
+        }
       }
     });
+
+    // Check integration table directly
+    supabase
+      .from('integrations')
+      .select('provider, is_active')
+      .eq('provider', 'google_calendar')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && data.is_active) {
+          setHasGoogleConnected(true);
+        }
+      });
 
     // 2. Fetch server-side saved settings
     fetch('/api/settings')
@@ -99,6 +118,31 @@ export default function SettingsPage() {
     } finally {
       setSavingSettings(false);
       setTimeout(() => setStatusMessage(null), 5000);
+    }
+  };
+
+  const handleConnectGoogle = async () => {
+    try {
+      setConnectingGoogle(true);
+      setStatusMessage(null);
+      const supabase = createClient();
+      const redirectUrl = `${window.location.origin}/callback?next=/settings`;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+          scopes: 'https://www.googleapis.com/auth/calendar.readonly',
+        },
+      });
+      if (error) throw error;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to connect Google account.';
+      setStatusMessage({ type: 'error', text: msg });
+      setConnectingGoogle(false);
     }
   };
 
@@ -216,11 +260,24 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
-            {/* Live connection indicator: synchronized 3.2s master pulse */}
-            <div className="badge-live" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}>
-              <span className="node-pulse-dot" />
-              Connected
-            </div>
+            {/* Live connection indicator or Connect Button */}
+            {hasGoogleConnected ? (
+              <div className="badge-live" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}>
+                <span className="node-pulse-dot" />
+                Connected
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleConnectGoogle}
+                disabled={connectingGoogle}
+                className="btn btn-primary btn-sm"
+                style={{ fontSize: '0.75rem' }}
+              >
+                <Calendar size={13} color="var(--brand-google)" />
+                {connectingGoogle ? 'Connecting...' : 'Connect Google Calendar'}
+              </button>
+            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>

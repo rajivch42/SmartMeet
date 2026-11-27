@@ -1,4 +1,6 @@
 // Slack Integration Service (BlockKit & Webhooks)
+import fs from 'fs';
+import path from 'path';
 import { Meeting, Summary, ActionItem } from '@/types/database';
 
 export interface SlackBroadcastResult {
@@ -6,6 +8,24 @@ export interface SlackBroadcastResult {
   channel?: string;
   message?: string;
   simulated?: boolean;
+}
+
+function getLiveSlackWebhookUrl(): string | undefined {
+  try {
+    const envPath = path.resolve(process.cwd(), '.env.local');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      const match = content.match(/^SLACK_WEBHOOK_URL=(.+)$/m);
+      if (match && match[1]) {
+        let val = match[1].trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        return val;
+      }
+    }
+  } catch {}
+  return process.env.SLACK_WEBHOOK_URL;
 }
 
 /**
@@ -17,7 +37,8 @@ export async function broadcastSummaryToSlack(
   actionItems: ActionItem[] = [],
   customWebhookUrl?: string | null
 ): Promise<SlackBroadcastResult> {
-  const webhookUrl = customWebhookUrl || process.env.SLACK_WEBHOOK_URL;
+  const webhookUrl = customWebhookUrl || getLiveSlackWebhookUrl();
+  console.log(`[SLACK_BROADCAST] Target Slack Webhook: ${webhookUrl}`);
   const isDemo = !webhookUrl || webhookUrl.includes('placeholder') || !webhookUrl.startsWith('http');
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';

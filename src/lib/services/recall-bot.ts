@@ -58,6 +58,11 @@ export async function dispatchRecallBot({
     const payload: Record<string, unknown> = {
       meeting_url: meetingUrl,
       bot_name: botName,
+      transcription_options: {
+        provider: {
+          meeting_captions: {},
+        },
+      },
     };
 
     if (webhookUrl) {

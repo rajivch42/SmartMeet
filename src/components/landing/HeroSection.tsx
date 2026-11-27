@@ -441,11 +441,11 @@ export default function HeroSection() {
           {/* Navigation Bar */}
           <nav className="hero-nav" aria-label="Main Navigation">
             {/* Logo Mark: 34px rounded-square glass with 7px pulsing blue dot */}
-            <Link href="/" className="hero-logo-container" aria-label="Converge AI Home">
+            <Link href="/" className="hero-logo-container" aria-label="AutoSync Meet Home">
               <div className="hero-logo-mark">
                 <div className="hero-listening-dot" />
               </div>
-              <span className="hero-brand-name">Converge AI</span>
+              <span className="hero-brand-name">AutoSync Meet</span>
             </Link>
 
             {/* Five Nav Links */}
@@ -479,29 +479,76 @@ export default function HeroSection() {
           </nav>
 
           {/* Hero Main Grid */}
-          <div className="hero-main-grid">
-            <div className="hero-text-column">
+          <div
+            className="hero-main-grid"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              textAlign: 'center',
+              gap: '48px',
+            }}
+          >
+            <div
+              className="hero-text-column"
+              style={{
+                maxWidth: '780px',
+                alignItems: 'center',
+              }}
+            >
               {/* Eyebrow: Inter, 10.5px, 600, uppercase, 0.16em tracking, glass pill */}
               <div className="hero-eyebrow">
                 [ CONVERSATION, DECODED ]
               </div>
 
               {/* Headline: Space Grotesk, clamp(42px, 6.2vw, 84px), 700. Two lines exactly */}
-              <h1 className="hero-headline">
-                <span className="hero-headline-line">Meetings</span>
-                <span className="hero-headline-line">Understood.</span>
+              <h1 className="hero-headline" style={{ textAlign: 'center' }}>
+                <span className="hero-headline-line">Autonomous</span>
+                <span className="hero-headline-line">Workplace Dialogue Intelligence</span>
               </h1>
 
               {/* Lede Paragraph: Inter, 20px, 400, --hero-text-muted, max-width 480px, line-height 1.55 */}
-              <p className="hero-lede">
-                An AI that joins your meetings, listens to every voice, and distills the chaos into clear decisions, structured tasks, and effortless momentum.
+              <p
+                className="hero-lede"
+                style={{
+                  maxWidth: '620px',
+                  textAlign: 'center',
+                  margin: '0 auto 28px auto',
+                }}
+              >
+                An AI assistant that joins your meetings, transcribes with speaker diarization, distills key decisions with Claude &amp; Gemini, and syncs tasks directly into Jira and Slack.
               </p>
 
               {/* CTA: Warm-to-magenta gradient pill with dark text (#241318) */}
-              <Link href="/dashboard" className="hero-cta-btn">
+              <Link href="/login" className="hero-cta-btn">
                 START LISTENING
                 <ArrowRight size={16} strokeWidth={2.4} />
               </Link>
+            </div>
+
+            {/* Featured Hero Product Card Image */}
+            <div
+              style={{
+                width: '100%',
+                maxWidth: '980px',
+                position: 'relative',
+                borderRadius: '24px',
+                padding: '8px',
+                background: 'linear-gradient(135deg, rgba(62, 142, 247, 0.3) 0%, rgba(242, 185, 77, 0.2) 50%, rgba(168, 85, 247, 0.3) 100%)',
+                boxShadow: '0 24px 80px -12px rgba(0, 0, 0, 0.9), 0 0 50px rgba(62, 142, 247, 0.25)',
+              }}
+            >
+              <img
+                src="/hero-banner.jpg"
+                alt="AutoSync Meet — Autonomous Workplace Dialogue Intelligence"
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  borderRadius: '18px',
+                  display: 'block',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                }}
+              />
             </div>
           </div>
         </div>

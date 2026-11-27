@@ -1,6 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { getMeetingById, updateMeetingStatus, saveTranscript } from '@/lib/services/meeting-store';
+import {
+  getMeetingById,
+  updateMeetingStatus,
+  saveTranscript,
+  saveSummary,
+  saveActionItems,
+} from '@/lib/services/meeting-store';
 import { getRecallBotDetails, fetchRecallBotTranscript } from '@/lib/services/recall-bot';
+import { summarizeMeetingTranscript } from '@/lib/services/llm-summarizer';
+import { broadcastSummaryToSlack } from '@/lib/services/slack';
 import { z } from 'zod';
 
 const syncSchema = z.object({
@@ -42,17 +50,67 @@ export async function POST(request: NextRequest) {
         duration_seconds: realTranscript.duration_seconds,
       });
 
-      const updated = await updateMeetingStatus(meeting.id, 'transcribed', meeting.recall_bot_id);
+      await updateMeetingStatus(meeting.id, 'transcribed', meeting.recall_bot_id);
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          status: 'transcribed',
-          meeting: updated,
-          transcript: realTranscript,
-          message: 'Real meeting transcript successfully downloaded from Recall.ai!',
-        },
-      });
+      // Run AI Summarization pipeline
+      try {
+        const summaryResult = await summarizeMeetingTranscript(
+          realTranscript.raw_text,
+          meeting.attendees || []
+        );
+
+        const savedSummary = await saveSummary({
+          meeting_id: meeting.id,
+          executive_summary: summaryResult.executive_summary,
+          decisions: summaryResult.decisions,
+          discussion_points: summaryResult.discussion_points,
+          model_version: summaryResult.model_version,
+        });
+
+        const savedActionItems = await saveActionItems(
+          meeting.id,
+          summaryResult.action_items.map((item: any) => ({
+            meeting_id: meeting.id,
+            title: item.title,
+            description: item.description || null,
+            assignee_name: item.assignee_name,
+            assignee_email: item.assignee_email || null,
+            due_date: item.due_date || null,
+            priority: item.priority,
+            status: 'pending',
+          }))
+        );
+
+        const summarizedMeeting = await updateMeetingStatus(meeting.id, 'summarized', meeting.recall_bot_id);
+
+        try {
+          await broadcastSummaryToSlack(meeting, savedSummary, savedActionItems);
+        } catch (slackErr) {
+          console.warn('[SYNC_ROUTE] Slack broadcast warning:', slackErr);
+        }
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            status: 'summarized',
+            meeting: summarizedMeeting,
+            summary: savedSummary,
+            action_items: savedActionItems,
+            message: 'Real meeting transcript and AI summary loaded successfully from Recall.ai!',
+          },
+        });
+      } catch (sumErr: any) {
+        console.error('[SYNC_ROUTE] Error summarizing transcript:', sumErr);
+        return NextResponse.json({
+          success: true,
+          data: {
+            status: 'transcribed',
+            meeting,
+            transcript: realTranscript,
+            message: 'Real meeting transcript downloaded, summary pending.',
+          },
+        });
+      }
     }
 
     if (statusCode === 'in_call_recording' || statusCode === 'in_call_not_recording') {

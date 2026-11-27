@@ -1,180 +1,225 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { ActionItem, Reminder } from '@/types/database';
-import { useDashboard } from '@/lib/context/DashboardContext';
-import {
-  CheckSquare,
-  RefreshCw,
-  ExternalLink,
-  Users,
-  Calendar,
-  CheckCircle2,
-  AlertCircle,
-  ArrowUpRight,
-  Bell,
-  Plus,
-  Trash2,
-  X,
-  Filter,
-} from 'lucide-react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
+import {
+  RefreshCw,
+  Plus,
+  Bell,
+  ArrowUp,
+  ExternalLink,
+  MoreHorizontal,
+  X,
+  Trash2,
+} from 'lucide-react';
+import { useDashboard } from '@/lib/context/DashboardContext';
+import { ActionItem } from '@/types/database';
+import TaskDueDatePopover from '@/components/tasks/TaskDueDatePopover';
 
-export default function TaskTrackerPage() {
-  const { tasks, tasksLoading: loading, fetchTasks, meetings } = useDashboard();
-  const [reminders, setReminders] = useState<Reminder[]>([]);
+interface DisplayTask {
+  id: string;
+  title: string;
+  description?: string | null;
+  priority: 'low' | 'medium' | 'high';
+  status: 'pending' | 'synced_to_jira' | 'completed';
+  assignee_name?: string | null;
+  assignee_initials: string;
+  assignee_avatar: string;
+  reminded_on_slack?: boolean;
+  due_date?: string | null;
+  due_date_formatted: string;
+  jira_issue_key?: string | null;
+  jira_issue_url?: string | null;
+  source_meeting_title?: string;
+  source_meeting_id?: string;
+}
+
+export default function ActionItemsPage() {
+  const {
+    tasks,
+    fetchTasks,
+    tasksLoading,
+    meetings,
+    deleteTask,
+    updateTaskDueDate,
+    pushTaskToJira,
+    pushAllTasksToJira,
+  } = useDashboard();
+
+  // Filter state
+  const [activeTab, setActiveTab] = useState<'all' | 'waiting' | 'in_jira'>('all');
+  const [selectedAssignee, setSelectedAssignee] = useState<string>('all');
+  const [selectedPriority, setSelectedPriority] = useState<string>('all');
+
+  // Loading & status notification states
   const [syncingAll, setSyncingAll] = useState(false);
-  const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [syncingItemId, setSyncingItemId] = useState<string | null>(null);
+  const [sendingSlack, setSendingSlack] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Filters
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'synced'>('all');
-  const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
-  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  // Delete confirmation dialog
+  const [taskToDelete, setTaskToDelete] = useState<DisplayTask | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // New Action Item Modal State
+  // Modal state for Add Action Item
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
   const [newTaskForm, setNewTaskForm] = useState({
-    meeting_id: '',
     title: '',
     description: '',
     assignee_name: '',
-    assignee_email: '',
     due_date: '',
-    priority: 'medium' as 'low' | 'medium' | 'high',
+    priority: 'high' as 'low' | 'medium' | 'high',
+    meeting_id: '',
   });
 
-  const fetchReminders = useCallback(async () => {
-    try {
-      const res = await fetch('/api/cron/reminders');
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setReminders(json.data);
+  // Map meeting_id to meeting title
+  const meetingTitleMap = useMemo(() => {
+    const map = new Map<string, string>();
+    meetings.forEach((m) => {
+      map.set(m.id, m.title);
+    });
+    return map;
+  }, [meetings]);
+
+  // Convert raw DB tasks into unified DisplayTask models (pure DB data, 0 mock)
+  const displayTasks: DisplayTask[] = useMemo(() => {
+    if (!tasks || tasks.length === 0) return [];
+
+    return tasks.map((dbTask: ActionItem, idx: number) => {
+      const name = dbTask.assignee_name || null;
+      let initials = '?';
+      let avatarClass = 'avatar-gray';
+
+      if (name) {
+        const parts = name.trim().split(/\s+/);
+        initials = parts.length > 1
+          ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+          : name.slice(0, 2).toUpperCase();
+        const colors = ['avatar-blue', 'avatar-purple', 'avatar-green', 'avatar-amber'];
+        avatarClass = colors[idx % colors.length];
       }
-    } catch (err) {
-      console.warn('Error fetching reminders:', err);
-    }
-  }, []);
 
-  useEffect(() => {
-    fetchReminders();
-  }, [fetchReminders]);
+      const dueDateFormatted = dbTask.due_date
+        ? new Date(dbTask.due_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+        : 'No due date';
 
-  const handleSyncSingle = async (actionItemId: string) => {
-    try {
-      setSyncingId(actionItemId);
-      setStatusMessage(null);
-      const res = await fetch('/api/integrations/jira', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action_item_id: actionItemId }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        const issueKey = json.data && json.data[0]?.jira_issue_key;
-        setStatusMessage({
-          type: 'success',
-          text: issueKey ? `Jira issue ${issueKey} created successfully` : 'Task synced to Jira Cloud.',
-        });
-        await fetchTasks();
-      } else {
-        setStatusMessage({ type: 'error', text: json.error?.message || 'Failed to sync with Jira.' });
+      return {
+        id: dbTask.id,
+        title: dbTask.title,
+        description: dbTask.description || null,
+        priority: (dbTask.priority as 'low' | 'medium' | 'high') || 'high',
+        status:
+          dbTask.status === 'completed'
+            ? 'completed'
+            : dbTask.jira_issue_key || dbTask.status === 'synced_to_jira'
+            ? 'synced_to_jira'
+            : 'pending',
+        assignee_name: name,
+        assignee_initials: initials,
+        assignee_avatar: avatarClass,
+        reminded_on_slack: false,
+        due_date: dbTask.due_date || null,
+        due_date_formatted: dueDateFormatted,
+        jira_issue_key: dbTask.jira_issue_key || null,
+        jira_issue_url: dbTask.jira_issue_url || null,
+        source_meeting_title: meetingTitleMap.get(dbTask.meeting_id) || 'View source meeting',
+        source_meeting_id: dbTask.meeting_id,
+      };
+    });
+  }, [tasks, meetingTitleMap]);
+
+  // Dynamic Metrics computed purely from real data
+  const totalCount = displayTasks.length;
+  const inJiraCount = displayTasks.filter((t) => t.status === 'synced_to_jira' || t.status === 'completed' || !!t.jira_issue_key).length;
+  const waitingCount = displayTasks.filter((t) => t.status === 'pending').length;
+
+  // 5-segment bar filled count
+  const filledSegments = totalCount > 0 ? Math.round((inJiraCount / totalCount) * 5) : 0;
+
+  // Filter pipeline
+  const filteredTasks = useMemo(() => {
+    return displayTasks.filter((item) => {
+      // Tab filter
+      if (activeTab === 'waiting' && item.status !== 'pending') return false;
+      if (activeTab === 'in_jira' && item.status !== 'synced_to_jira' && item.status !== 'completed' && !item.jira_issue_key) return false;
+
+      // Assignee dropdown filter
+      if (selectedAssignee !== 'all') {
+        if (selectedAssignee === 'unassigned') {
+          if (item.assignee_name) return false;
+        } else if (item.assignee_name !== selectedAssignee) {
+          return false;
+        }
       }
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Network error communicating with Jira Cloud.' });
-    } finally {
-      setSyncingId(null);
-    }
-  };
 
-  const handleSyncAll = async () => {
+      // Priority dropdown filter
+      if (selectedPriority !== 'all' && item.priority !== selectedPriority) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [displayTasks, activeTab, selectedAssignee, selectedPriority]);
+
+  // Unique assignees for filter dropdown
+  const uniqueAssignees = useMemo(() => {
+    const names = new Set<string>();
+    displayTasks.forEach((t) => {
+      if (t.assignee_name) names.add(t.assignee_name);
+    });
+    return Array.from(names);
+  }, [displayTasks]);
+
+  // Push All Waiting to Jira
+  const handlePushAllJira = async () => {
     try {
       setSyncingAll(true);
-      setStatusMessage(null);
-      const res = await fetch('/api/integrations/jira', { method: 'POST' });
-      const json = await res.json();
-      if (json.success) {
-        setStatusMessage({ type: 'success', text: `Successfully created ${json.count} Jira issue(s)` });
-        await fetchTasks();
+      setStatusMsg(null);
+      const res = await pushAllTasksToJira();
+      if (res.success) {
+        setStatusMsg({
+          type: 'success',
+          text: res.message || `Successfully pushed action items to Jira.`,
+        });
       } else {
-        setStatusMessage({ type: 'error', text: json.error?.message || 'Failed to push tasks to Jira.' });
+        setStatusMsg({ type: 'error', text: res.message || 'Failed to push to Jira.' });
       }
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Network error syncing tasks.' });
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err.message || 'Jira push error.' });
     } finally {
       setSyncingAll(false);
+      setTimeout(() => setStatusMsg(null), 4500);
     }
   };
 
-  const handleDeleteTask = async (actionItemId: string) => {
+  // Push Single Task to Jira
+  const handlePushSingleJira = async (task: DisplayTask) => {
     try {
-      setDeletingId(actionItemId);
-      setStatusMessage(null);
-      const res = await fetch(`/api/action-items?id=${actionItemId}`, {
-        method: 'DELETE',
-      });
-      const json = await res.json();
-      if (json.success) {
-        setStatusMessage({ type: 'success', text: 'Action item removed.' });
-        await fetchTasks();
-      } else {
-        setStatusMessage({ type: 'error', text: json.error?.message || 'Failed to delete action item.' });
-      }
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Network error deleting task.' });
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskForm.title.trim()) return;
-
-    try {
-      setCreatingTask(true);
-      setStatusMessage(null);
-      const res = await fetch('/api/action-items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newTaskForm,
-          meeting_id: newTaskForm.meeting_id || meetings[0]?.id || undefined,
-        }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setStatusMessage({ type: 'success', text: `Action item "${newTaskForm.title}" created.` });
-        setIsModalOpen(false);
-        setNewTaskForm({
-          meeting_id: '',
-          title: '',
-          description: '',
-          assignee_name: '',
-          assignee_email: '',
-          due_date: '',
-          priority: 'medium',
+      setSyncingItemId(task.id);
+      setStatusMsg(null);
+      const res = await pushTaskToJira(task.id);
+      if (res.success) {
+        setStatusMsg({
+          type: 'success',
+          text: `Jira issue ${res.jiraKey} created for "${task.title}".`,
         });
-        await fetchTasks();
       } else {
-        setStatusMessage({ type: 'error', text: json.error?.message || 'Failed to create task.' });
+        setStatusMsg({ type: 'error', text: res.message || 'Failed to sync task' });
       }
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Network error creating action item.' });
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err.message || 'Failed to sync task' });
     } finally {
-      setCreatingTask(false);
+      setSyncingItemId(null);
+      setTimeout(() => setStatusMsg(null), 4500);
     }
   };
 
-  const [triggeringReminders, setTriggeringReminders] = useState(false);
-
-  const handleTriggerReminders = async () => {
+  // Send Slack Reminders
+  const handleSendSlackReminders = async () => {
     try {
-      setTriggeringReminders(true);
-      setStatusMessage(null);
+      setSendingSlack(true);
+      setStatusMsg(null);
       const res = await fetch('/api/cron/reminders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -182,594 +227,572 @@ export default function TaskTrackerPage() {
       });
       const json = await res.json();
       if (json.success) {
-        setStatusMessage({
+        setStatusMsg({
           type: 'success',
-          text: `Meeting summary broadcasted to #meeting-summaries on Slack (${json.data?.remindersSent || 0} alert(s) dispatched)`,
+          text: `Reminders dispatched to Slack for pending action items.`,
         });
-        await Promise.all([fetchTasks(), fetchReminders()]);
       } else {
-        setStatusMessage({ type: 'error', text: json.error?.message || 'Failed to evaluate reminders.' });
+        setStatusMsg({ type: 'error', text: json.error?.message || 'Failed to dispatch Slack reminders.' });
       }
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Network error evaluating reminders.' });
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err.message || 'Failed to dispatch Slack reminders.' });
     } finally {
-      setTriggeringReminders(false);
-      setTimeout(() => setStatusMessage(null), 6000);
+      setSendingSlack(false);
+      setTimeout(() => setStatusMsg(null), 4500);
     }
   };
 
-  // Assignee list for dropdown
-  const uniqueAssignees = Array.from(
-    new Set(tasks.map((t) => t.assignee_name).filter(Boolean))
-  ) as string[];
+  // Create New Action Item via Modal
+  const handleCreateActionItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskForm.title.trim()) return;
 
-  // Filter pipeline
-  const filteredTasks = tasks.filter((t) => {
-    if (statusFilter === 'pending' && t.status !== 'pending') return false;
-    if (statusFilter === 'synced' && t.status !== 'synced_to_jira') return false;
-    if (assigneeFilter !== 'all' && t.assignee_name !== assigneeFilter) return false;
-    if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
-    return true;
-  });
+    try {
+      setCreatingTask(true);
+      const targetMeetingId = newTaskForm.meeting_id || meetings[0]?.id;
+      if (!targetMeetingId) {
+        setStatusMsg({ type: 'error', text: 'Please create or select a meeting first.' });
+        return;
+      }
 
-  const pendingCount = tasks.filter((t) => t.status === 'pending').length;
-  const syncedCount = tasks.filter((t) => t.status === 'synced_to_jira').length;
+      const res = await fetch('/api/action-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTaskForm.title,
+          description: newTaskForm.description || undefined,
+          assignee_name: newTaskForm.assignee_name || undefined,
+          due_date: newTaskForm.due_date || undefined,
+          priority: newTaskForm.priority,
+          meeting_id: targetMeetingId,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        throw new Error(json.error?.message || 'Failed to create action item');
+      }
 
-  // Check if due date is < 24 hours away
-  const isDueSoon = (dateStr: string | null) => {
-    if (!dateStr) return false;
-    const dueTime = new Date(dateStr).getTime();
-    const now = Date.now();
-    const diffHours = (dueTime - now) / (1000 * 60 * 60);
-    return diffHours >= -24 && diffHours <= 24;
+      setStatusMsg({ type: 'success', text: `Action item "${newTaskForm.title}" added.` });
+      setIsModalOpen(false);
+      setNewTaskForm({
+        title: '',
+        description: '',
+        assignee_name: '',
+        due_date: '',
+        priority: 'high',
+        meeting_id: '',
+      });
+      await fetchTasks();
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err.message || 'Failed to create action item.' });
+    } finally {
+      setCreatingTask(false);
+      setTimeout(() => setStatusMsg(null), 4000);
+    }
+  };
+
+  // Delete Action Item
+  const handleConfirmDelete = async () => {
+    if (!taskToDelete) return;
+    try {
+      setIsDeleting(true);
+      const res = await deleteTask(taskToDelete.id);
+      if (res.success) {
+        setStatusMsg({ type: 'success', text: `Deleted "${taskToDelete.title}".` });
+      } else {
+        setStatusMsg({ type: 'error', text: res.message || 'Failed to delete action item.' });
+      }
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err.message || 'Error deleting action item.' });
+    } finally {
+      setIsDeleting(false);
+      setTaskToDelete(null);
+      setTimeout(() => setStatusMsg(null), 4000);
+    }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      {/* Header Bar */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
-          gap: 'var(--space-4)',
-        }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-1)' }}>
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--blue-bg)',
-                border: '1px solid rgba(62, 142, 247, 0.25)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--blue)',
-              }}
-            >
-              <CheckSquare size={20} />
-            </div>
-            <h1 className="type-h1" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
-              Action Items &amp; Jira Tracker
-            </h1>
-          </div>
-          <p className="prose-limit" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Extracted meeting commitments automatically mapped to assignees and synced to Jira Cloud.
-          </p>
-        </div>
+    <div className="tasks-view-container">
+      {/* 1. Header Section */}
+      <div className="tasks-header-section">
+        <h1 className="tasks-header-title">Action items</h1>
+        <p className="tasks-header-subtitle">
+          Commitments pulled from your meetings, assigned to people and synced to Jira Cloud.
+        </p>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        {/* Action Toolbar */}
+        <div className="tasks-action-toolbar">
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="btn btn-primary btn-sm"
-          >
-            <Plus size={14} className="icon-hover-rotate" /> Add Action Item
-          </button>
-          <button
+            type="button"
             onClick={() => fetchTasks()}
-            className="btn btn-secondary btn-sm"
+            title="Refresh action items"
+            className="tasks-btn-icon"
           >
-            <RefreshCw size={13} className={loading ? 'status-dot-pulse' : 'icon-hover-rotate'} /> Refresh
+            <RefreshCw size={14} className={tasksLoading ? 'dash-spin' : ''} />
           </button>
+
           <button
-            onClick={handleTriggerReminders}
-            disabled={triggeringReminders}
-            className="btn btn-secondary btn-sm"
-            style={{ color: 'var(--status-warning)', borderColor: 'rgba(232, 151, 60, 0.3)' }}
+            type="button"
+            onClick={() => setIsModalOpen(true)}
+            className="tasks-btn-glass"
           >
-            <Bell size={13} className={triggeringReminders ? 'status-dot-pulse' : 'icon-hover-bounce'} />
-            {triggeringReminders ? 'Evaluating...' : 'Send Slack Reminders'}
+            <Plus size={14} />
+            <span>Add action item</span>
           </button>
-          {pendingCount > 0 && (
-            <button
-              onClick={handleSyncAll}
-              disabled={syncingAll}
-              className="btn btn-primary btn-sm"
-            >
-              <ArrowUpRight size={14} className="icon-hover-arrow" />
-              {syncingAll ? 'Pushing to Jira...' : `Push All to Jira (${pendingCount})`}
-            </button>
-          )}
+
+          <button
+            type="button"
+            onClick={handleSendSlackReminders}
+            disabled={sendingSlack || waitingCount === 0}
+            className="tasks-btn-glass"
+          >
+            <Bell size={14} />
+            <span>{sendingSlack ? 'Sending...' : 'Send Slack reminders'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePushAllJira}
+            disabled={syncingAll || waitingCount === 0}
+            className="tasks-btn-primary"
+          >
+            <ArrowUp size={14} />
+            <span>
+              {syncingAll
+                ? 'Pushing...'
+                : waitingCount > 0
+                ? `Push ${waitingCount} to Jira`
+                : 'All in Jira'}
+            </span>
+          </button>
         </div>
       </div>
 
-      {statusMessage && (
+      {/* 2. Notification Toast */}
+      {statusMsg && (
         <div
-          className={`badge ${statusMessage.type === 'success' ? 'badge-success' : 'badge-danger'}`}
           style={{
-            padding: 'var(--space-3) var(--space-4)',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: '0.85rem',
-            lineHeight: 1.4,
+            padding: '10px 16px',
+            borderRadius: '10px',
+            fontSize: '0.825rem',
+            background:
+              statusMsg.type === 'success' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+            border:
+              statusMsg.type === 'success'
+                ? '1px solid rgba(16, 185, 129, 0.25)'
+                : '1px solid rgba(239, 68, 68, 0.25)',
+            color: statusMsg.type === 'success' ? '#34D399' : '#F87171',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
           }}
         >
-          {statusMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-          <span>{statusMessage.text}</span>
+          <span>{statusMsg.text}</span>
         </div>
       )}
 
-      {/* Metrics Row (3 Cards with Space Grotesk hierarchy) */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 'var(--space-4)',
-        }}
-      >
-        <div className="card card-interactive" style={{ padding: 'var(--space-4) var(--space-5)', borderRadius: 'var(--radius-md)', background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
-          <div className="type-caption" style={{ color: 'var(--text-muted)', marginBottom: 'var(--space-1)', fontWeight: 600, letterSpacing: '0.05em' }}>
-            TOTAL EXTRACTED
-          </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
-            {tasks.length}
-          </div>
-          <div className="type-caption" style={{ color: 'var(--text-secondary)' }}>From meeting transcript dialogues</div>
-        </div>
-
-        <div className="card card-interactive" style={{ padding: 'var(--space-4) var(--space-5)', borderRadius: 'var(--radius-md)', background: 'var(--bg-card)', border: '1px solid rgba(232, 151, 60, 0.25)' }}>
-          <div className="type-caption" style={{ color: 'var(--status-warning)', marginBottom: 'var(--space-1)', fontWeight: 600, letterSpacing: '0.05em' }}>
-            PENDING JIRA SYNC
-          </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.9rem', fontWeight: 600, color: 'var(--status-warning)', marginBottom: 'var(--space-1)' }}>
-            {pendingCount}
-          </div>
-          <div className="type-caption" style={{ color: 'var(--text-secondary)' }}>Awaiting one-click export</div>
-        </div>
-
-        <div className="card card-interactive" style={{ padding: 'var(--space-4) var(--space-5)', borderRadius: 'var(--radius-md)', background: 'linear-gradient(180deg, rgba(242, 185, 77, 0.04) 0%, var(--bg-card) 100%)', border: '1px solid rgba(242, 185, 77, 0.25)' }}>
-          <div className="type-caption" style={{ color: 'var(--gold)', marginBottom: 'var(--space-1)', fontWeight: 600, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span className="node-gold-dot" /> SYNCED TO JIRA
-          </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.9rem', fontWeight: 600, color: 'var(--gold)', marginBottom: 'var(--space-1)' }}>
-            {syncedCount}
-          </div>
-          <div className="type-caption" style={{ color: 'var(--text-secondary)' }}>Active issues in Atlassian backlog</div>
-        </div>
-      </div>
-
-      {/* Filter Bar (Meeting, Assignee, Status, Priority) */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 'var(--space-3)',
-          borderBottom: '1px solid var(--border-subtle)',
-          paddingBottom: 'var(--space-3)',
-        }}
-      >
-        {/* Status Tab Group */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`btn btn-sm ${statusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-          >
-            All Tasks ({tasks.length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('pending')}
-            className={`btn btn-sm ${statusFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
-          >
-            Pending Sync ({pendingCount})
-          </button>
-          <button
-            onClick={() => setStatusFilter('synced')}
-            className={`btn btn-sm ${statusFilter === 'synced' ? 'btn-primary' : 'btn-secondary'}`}
-          >
-            Synced in Jira ({syncedCount})
-          </button>
-        </div>
-
-        {/* Dropdown Filters (Assignee & Priority) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <select
-            value={assigneeFilter}
-            onChange={(e) => setAssigneeFilter(e.target.value)}
-            className="input-field"
-            style={{ width: 'auto', padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
-          >
-            <option value="all">All Assignees</option>
-            {uniqueAssignees.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="input-field"
-            style={{ width: 'auto', padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
-          >
-            <option value="all">All Priorities</option>
-            <option value="high">High Priority</option>
-            <option value="medium">Medium Priority</option>
-            <option value="low">Low Priority</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Task List / Empty State */}
-      {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {[1, 2, 3].map((n) => (
-            <div key={n} className="card skeleton-shimmer" style={{ height: '110px' }} />
+      {/* 3. Segmented Progress Bar */}
+      <div className="tasks-progress-row">
+        <div className="tasks-segmented-bar">
+          {[0, 1, 2, 3, 4].map((idx) => (
+            <div
+              key={idx}
+              className={`tasks-segment-pill ${idx < filledSegments ? 'filled' : ''}`}
+            />
           ))}
         </div>
-      ) : filteredTasks.length === 0 ? (
-        /* Empty State strictly per Spec: exact text */
-        <div
-          className="card"
-          style={{
-            padding: 'var(--space-10) var(--space-6)',
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 'var(--space-3)',
-            border: '1px dashed var(--border-default)',
-          }}
-        >
-          <CheckSquare size={38} color="var(--text-muted)" style={{ opacity: 0.6 }} />
-          <h3 className="type-h3">No action items yet</h3>
-          <p className="prose-limit" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            No action items yet — they&apos;ll show up here automatically after your next synced meeting.
-          </p>
-          <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
-            <button onClick={() => setIsModalOpen(true)} className="btn btn-primary btn-sm">
-              <Plus size={14} /> Add Action Item
-            </button>
-            <Link href="/meetings" className="btn btn-secondary btn-sm">
-              View Meetings
-            </Link>
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {filteredTasks.map((t) => {
-            const isSynced = t.status === 'synced_to_jira' && t.jira_issue_key;
-            const isSyncing = syncingId === t.id;
-            const isDeleting = deletingId === t.id;
-            const dueAlert = isDueSoon(t.due_date);
+        <span className="tasks-progress-text">
+          {totalCount > 0
+            ? `${inJiraCount} of ${totalCount} are in Jira. ${waitingCount} are waiting to sync.`
+            : '0 action items yet. They will be extracted automatically from meetings or you can add one manually.'}
+        </span>
+      </div>
 
-            return (
-              <div
-                key={t.id}
-                className="card card-interactive"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--space-3)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--space-4) var(--space-5)',
-                  border: isSynced ? '1px solid rgba(242, 185, 77, 0.25)' : '1px solid var(--border-default)',
-                  background: isSynced ? 'linear-gradient(180deg, rgba(242, 185, 77, 0.03) 0%, var(--bg-card) 100%)' : 'var(--bg-card)',
-                  borderLeft: isSynced ? '3px solid var(--gold)' : '3px solid rgba(232, 151, 60, 0.5)',
-                  opacity: isDeleting ? 0.4 : 1,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-1)', flexWrap: 'wrap' }}>
-                      {isSynced ? (
-                        <span className="node-gold-dot" title="Synced to Jira" />
-                      ) : (
-                        <span
-                          style={{
-                            width: '7px',
-                            height: '7px',
-                            borderRadius: '50%',
-                            border: '1.5px solid var(--border-default)',
-                            display: 'inline-block',
-                            flexShrink: 0,
-                          }}
-                          title="Pending Jira sync"
-                        />
-                      )}
-                      <strong className="text-title-interactive" style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                        {t.title}
-                      </strong>
-                      <span
-                        className={`badge ${
-                          t.priority === 'high'
-                            ? 'badge-warning'
-                            : 'badge-secondary'
-                        }`}
-                        style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}
+      {/* 4. Filter Navigation Row */}
+      <div className="tasks-filter-row">
+        {/* Left Tabs */}
+        <div className="tasks-nav-tabs">
+          <button
+            type="button"
+            onClick={() => setActiveTab('all')}
+            className={`tasks-tab-btn ${activeTab === 'all' ? 'active' : ''}`}
+          >
+            All {totalCount}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('waiting')}
+            className={`tasks-tab-btn ${activeTab === 'waiting' ? 'active' : ''}`}
+          >
+            Waiting to sync {waitingCount}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('in_jira')}
+            className={`tasks-tab-btn ${activeTab === 'in_jira' ? 'active' : ''}`}
+          >
+            In Jira {inJiraCount}
+          </button>
+        </div>
+
+        {/* Right Dropdown Selects */}
+        <div className="tasks-filter-dropdowns">
+          <select
+            value={selectedAssignee}
+            onChange={(e) => setSelectedAssignee(e.target.value)}
+            className="tasks-select-pill"
+          >
+            <option value="all">All assignees</option>
+            {uniqueAssignees.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+            <option value="unassigned">Unassigned</option>
+          </select>
+
+          <select
+            value={selectedPriority}
+            onChange={(e) => setSelectedPriority(e.target.value)}
+            className="tasks-select-pill"
+          >
+            <option value="all">All priorities</option>
+            <option value="high">High priority</option>
+            <option value="medium">Medium priority</option>
+            <option value="low">Low priority</option>
+          </select>
+        </div>
+      </div>
+
+      {/* 5. Main Action Items Table Card */}
+      <div className="tasks-table-card">
+        {/* Table Header */}
+        <div className="tasks-grid-header">
+          <span />
+          <span>Task</span>
+          <span>Assignee</span>
+          <span>Due</span>
+          <span>Jira</span>
+          <span />
+        </div>
+
+        {/* Rows List */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {filteredTasks.length > 0 ? (
+            filteredTasks.map((task) => {
+              const isCompleted = task.status === 'completed';
+              const isSynced = task.status === 'synced_to_jira' || isCompleted;
+              const isSyncingThis = syncingItemId === task.id;
+
+              return (
+                <div key={task.id} className="tasks-grid-row">
+                  {/* Col 0: Status Circle Icon */}
+                  <div>
+                    {isSynced ? (
+                      <div
+                        className="tasks-circle-checked"
+                        style={isCompleted ? { background: '#10B981', borderColor: '#059669' } : {}}
+                        title={isCompleted ? 'Completed in Jira' : 'Synced to Jira'}
                       >
-                        {t.priority}
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </div>
+                    ) : (
+                      <div className="tasks-circle-empty" />
+                    )}
+                  </div>
+
+                  {/* Col 1: Task Title, Priority, Description, Source Meeting Link */}
+                  <div className="tasks-info-block">
+                    <div className="tasks-title-row">
+                      <span
+                        className="tasks-title-text"
+                        style={isCompleted ? { textDecoration: 'line-through', opacity: 0.65 } : {}}
+                      >
+                        {task.title}
                       </span>
-                      {reminders.some((r) => r.action_item_id === t.id) && (
-                        <span className="badge" style={{ fontSize: '0.65rem', background: 'var(--gold-bg)', color: 'var(--gold)', border: '1px solid rgba(242, 185, 77, 0.25)' }}>
-                          <Bell size={10} className="icon-hover-bounce" /> Slack Reminder Sent
+                      {isCompleted ? (
+                        <span
+                          className="tasks-priority-pill"
+                          style={{
+                            background: 'rgba(16, 185, 129, 0.15)',
+                            color: '#34D399',
+                            borderColor: 'rgba(16, 185, 129, 0.3)',
+                          }}
+                        >
+                          Done in Jira
+                        </span>
+                      ) : (
+                        <span className={`tasks-priority-pill tasks-priority-${task.priority}`}>
+                          {task.priority === 'high' ? 'High' : task.priority === 'medium' ? 'Medium' : 'Low'}
                         </span>
                       )}
                     </div>
 
-                    {t.description && (
-                      <p className="prose-limit" style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.4, margin: 'var(--space-1) 0' }}>
-                        {t.description}
-                      </p>
+                    {task.description && (
+                      <p className="tasks-desc-text">{task.description}</p>
+                    )}
+
+                    {task.source_meeting_id && (
+                      <div>
+                        <Link
+                          href={`/meetings/${task.source_meeting_id}`}
+                          className="tasks-source-link"
+                        >
+                          {task.source_meeting_title}
+                        </Link>
+                      </div>
                     )}
                   </div>
 
-                  {/* Actions (Semantic Jira Badge or Push to Jira Button) */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    {isSynced ? (
+                  {/* Col 2: Assignee Avatar, Name, Slack Reminded */}
+                  <div className="tasks-assignee-block">
+                    <div className={`tasks-assignee-avatar ${task.assignee_avatar}`}>
+                      {task.assignee_initials}
+                    </div>
+                    <div className="tasks-assignee-meta">
+                      <span className={`tasks-assignee-name ${!task.assignee_name ? 'tasks-due-muted' : ''}`}>
+                        {task.assignee_name || 'Unassigned'}
+                      </span>
+                      {task.reminded_on_slack && (
+                        <span className="tasks-assignee-sub">Reminded on Slack</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Col 3: Due Date (P1 1-Click Inline Popover with P2 Real-Time Jira Sync) */}
+                  <div>
+                    <TaskDueDatePopover
+                      taskId={task.id}
+                      currentDueDate={task.due_date || null}
+                      onUpdate={async (taskId, newDate) => {
+                        const res = await updateTaskDueDate(taskId, newDate);
+                        if (res.message) {
+                          setStatusMsg({
+                            type: res.success ? 'success' : 'error',
+                            text: res.message,
+                          });
+                          setTimeout(() => setStatusMsg(null), 5000);
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {/* Col 4: Jira Action Button OR Issue Key Pill */}
+                  <div className="tasks-jira-cell">
+                    {isSynced && task.jira_issue_key ? (
                       <a
-                        href={t.jira_issue_url || '#'}
+                        href={task.jira_issue_url || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="badge-resolved"
-                        style={{
-                          fontSize: '0.75rem',
-                          padding: '0.3rem 0.6rem',
-                          fontFamily: 'var(--font-mono, monospace)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 'var(--space-1)',
-                          textDecoration: 'none',
-                        }}
+                        className="tasks-jira-pill"
                       >
-                        <span style={{ fontWeight: 600 }}>Jira</span>
-                        <span>{t.jira_issue_key}</span>
-                        <ExternalLink size={10} color="var(--gold)" />
+                        <span>{task.jira_issue_key}</span>
+                        <ExternalLink size={11} />
                       </a>
                     ) : (
                       <button
-                        onClick={() => handleSyncSingle(t.id)}
-                        disabled={isSyncing}
-                        className="btn btn-primary btn-sm"
-                        style={{ fontSize: '0.75rem' }}
+                        type="button"
+                        onClick={() => handlePushSingleJira(task)}
+                        disabled={isSyncingThis}
+                        className="tasks-btn-push-single"
                       >
-                        <span className={isSyncing ? 'node-pulse-dot' : ''} />
-                        {!isSyncing && <ArrowUpRight size={12} />}
-                        {isSyncing ? 'Pushing...' : 'Push to Jira'}
+                        {isSyncingThis ? 'Pushing...' : 'Push to Jira'}
                       </button>
                     )}
+                  </div>
 
+                  {/* Col 5: Trailing Actions: Delete */}
+                  <div>
                     <button
-                      onClick={() => handleDeleteTask(t.id)}
-                      disabled={isDeleting}
+                      type="button"
+                      onClick={() => setTaskToDelete(task)}
                       title="Delete action item"
-                      className="btn btn-secondary btn-sm"
-                      style={{ padding: '0.35rem', color: 'var(--text-muted)' }}
+                      className="tasks-row-menu-btn"
                     >
-                      <Trash2 size={13} className="icon-hover-rotate" />
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: 'var(--space-3)',
-                    paddingTop: 'var(--space-2)',
-                    borderTop: '1px solid var(--border-subtle)',
-                    fontSize: '0.75rem',
-                    color: 'var(--text-muted)',
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                    <Users size={13} color="var(--blue)" />
-                    <strong>Assignee:</strong> {t.assignee_name || 'Unassigned'}
-                    {t.assignee_email && ` (${t.assignee_email})`}
-                  </span>
-
-                  {/* Amber pill if < 24h per Spec */}
-                  <span
-                    className={dueAlert ? 'badge badge-warning' : ''}
-                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}
+              );
+            })
+          ) : (
+            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#A3ACC0', fontSize: '14px' }}>
+              {totalCount === 0 ? (
+                <div>
+                  <p style={{ marginBottom: '16px' }}>No action items yet.</p>
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(true)}
+                    className="dash-btn-primary"
+                    style={{ margin: '0 auto' }}
                   >
-                    <Calendar size={13} color={dueAlert ? 'var(--status-warning)' : 'var(--text-muted)'} />
-                    <strong>Due:</strong>{' '}
-                    {t.due_date ? new Date(t.due_date).toLocaleDateString() : 'No deadline'}
-                    {dueAlert && ' (due soon)'}
-                  </span>
-
-                  {t.meeting_id && (
-                    <Link
-                      href={`/meetings/${t.meeting_id}`}
-                      style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', color: 'var(--cyan)', textDecoration: 'none' }}
-                    >
-                      View Source Meeting <ExternalLink size={10} color="var(--cyan)" />
-                    </Link>
-                  )}
+                    <Plus size={14} />
+                    <span>Add action item</span>
+                  </button>
                 </div>
-              </div>
-            );
-          })}
+              ) : (
+                'No action items match the current filter.'
+              )}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Modal: Create Action Item */}
+      {/* 6. Modal for Add Action Item */}
       {isModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            backdropFilter: 'var(--glass-blur)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: 'var(--space-4)',
-          }}
-        >
-          <div
-            className="card"
-            style={{
-              width: '100%',
-              maxWidth: '520px',
-              boxShadow: 'var(--shadow-3)',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 'var(--radius-md)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <CheckSquare size={20} color="var(--primary)" />
-                <h2 className="type-h2">Create New Action Item</h2>
-              </div>
+        <div className="tasks-modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="tasks-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 className="tasks-modal-title">Add Action Item</h3>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="btn btn-secondary btn-sm"
-                style={{ padding: '0.25rem 0.5rem' }}
+                className="tasks-row-menu-btn"
               >
-                <X size={15} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <form onSubmit={handleCreateActionItem} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-secondary)' }}>
-                  Associated Meeting
-                </label>
-                <select
-                  value={newTaskForm.meeting_id}
-                  onChange={(e) => setNewTaskForm({ ...newTaskForm, meeting_id: e.target.value })}
-                  className="input-field"
-                >
-                  <option value="">Select a meeting...</option>
-                  {meetings.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.title} ({new Date(m.start_time).toLocaleDateString()})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-secondary)' }}>
-                  Task Title *
+                <label style={{ display: 'block', fontSize: '0.775rem', color: '#94A3B8', marginBottom: '6px' }}>
+                  Commitment / Task Title *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Implement OAuth token refresh flow"
+                  placeholder="e.g. Verify database schema migration"
                   value={newTaskForm.title}
                   onChange={(e) => setNewTaskForm({ ...newTaskForm, title: e.target.value })}
-                  className="input-field"
+                  className="tasks-input"
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-secondary)' }}>
+                <label style={{ display: 'block', fontSize: '0.775rem', color: '#94A3B8', marginBottom: '6px' }}>
+                  Source Meeting *
+                </label>
+                <select
+                  required
+                  value={newTaskForm.meeting_id || (meetings[0]?.id || '')}
+                  onChange={(e) => setNewTaskForm({ ...newTaskForm, meeting_id: e.target.value })}
+                  className="tasks-input"
+                >
+                  {meetings.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.title}
+                    </option>
+                  ))}
+                  {meetings.length === 0 && <option value="">No meetings available</option>}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.775rem', color: '#94A3B8', marginBottom: '6px' }}>
                   Description
                 </label>
                 <textarea
-                  rows={2}
-                  placeholder="Detailed commitment notes, technical specs, or deliverables..."
+                  rows={3}
+                  placeholder="Additional context extracted from dialogue..."
                   value={newTaskForm.description}
                   onChange={(e) => setNewTaskForm({ ...newTaskForm, description: e.target.value })}
-                  className="input-field"
+                  className="tasks-input"
                   style={{ resize: 'vertical' }}
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-secondary)' }}>
+                  <label style={{ display: 'block', fontSize: '0.775rem', color: '#94A3B8', marginBottom: '6px' }}>
                     Assignee Name
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Rajiv Chaurasiya"
+                    placeholder="e.g. John Doe"
                     value={newTaskForm.assignee_name}
                     onChange={(e) => setNewTaskForm({ ...newTaskForm, assignee_name: e.target.value })}
-                    className="input-field"
+                    className="tasks-input"
                   />
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-secondary)' }}>
-                    Assignee Email
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="e.g. rajiv@example.com"
-                    value={newTaskForm.assignee_email}
-                    onChange={(e) => setNewTaskForm({ ...newTaskForm, assignee_email: e.target.value })}
-                    className="input-field"
-                  />
-                </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-secondary)' }}>
+                  <label style={{ display: 'block', fontSize: '0.775rem', color: '#94A3B8', marginBottom: '6px' }}>
                     Priority
                   </label>
                   <select
                     value={newTaskForm.priority}
                     onChange={(e) => setNewTaskForm({ ...newTaskForm, priority: e.target.value as 'low' | 'medium' | 'high' })}
-                    className="input-field"
+                    className="tasks-input"
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
                     <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
                   </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-secondary)' }}>
-                    Due Date
-                  </label>
-                  <input
-                    type="date"
-                    value={newTaskForm.due_date}
-                    onChange={(e) => setNewTaskForm({ ...newTaskForm, due_date: e.target.value })}
-                    className="input-field"
-                  />
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.775rem', color: '#94A3B8', marginBottom: '6px' }}>
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  value={newTaskForm.due_date}
+                  onChange={(e) => setNewTaskForm({ ...newTaskForm, due_date: e.target.value })}
+                  className="tasks-input"
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="btn btn-secondary btn-sm"
+                  className="tasks-btn-glass"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={creatingTask}
-                  className="btn btn-primary btn-sm"
+                  disabled={creatingTask || !newTaskForm.title.trim()}
+                  className="tasks-btn-primary"
                 >
-                  {creatingTask ? 'Saving Task...' : 'Create Action Item'}
+                  {creatingTask ? 'Adding...' : 'Create Action Item'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Delete Confirmation Dialog */}
+      {taskToDelete && (
+        <div className="tasks-modal-overlay" onClick={() => setTaskToDelete(null)}>
+          <div className="tasks-modal-card" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="tasks-modal-title" style={{ color: '#F87171' }}>Delete Action Item</h3>
+            <p style={{ color: '#A3ACC0', fontSize: '14px', margin: '12px 0 20px 0', lineHeight: 1.5 }}>
+              Are you sure you want to delete <strong>&ldquo;{taskToDelete.title}&rdquo;</strong>? This action will remove it from the database and all reports.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setTaskToDelete(null)}
+                className="tasks-btn-glass"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="dash-btn-primary"
+                style={{ background: '#EF4444' }}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

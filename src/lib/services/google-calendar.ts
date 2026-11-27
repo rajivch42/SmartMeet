@@ -58,8 +58,9 @@ export async function fetchUpcomingGoogleEvents(
   }
 
   try {
-    const timeMin = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); // Include meetings from past 7 days
-    const timeMax = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days ahead
+    // Only fetch upcoming meetings within the next 7 days (transient sync window)
+    const timeMin = new Date().toISOString();
+    const timeMax = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
     url.searchParams.set('timeMin', timeMin);
@@ -87,20 +88,44 @@ export async function fetchUpcomingGoogleEvents(
     const mappedEvents: CalendarEventDTO[] = [];
 
     for (const item of items) {
-      // Find Google Meet link from hangoutLink or conferenceData
-      let meetUrl = item.hangoutLink;
+      // Ignore cancelled events
+      if (item.status === 'cancelled') continue;
+
+      // Extract real video meeting link from hangoutLink, conferenceData, location, or description
+      let meetUrl: string | null = item.hangoutLink || null;
       if (!meetUrl && item.conferenceData?.entryPoints) {
         const videoEntry = item.conferenceData.entryPoints.find(
-          (ep: { entryPointType: string; uri: string }) => ep.entryPointType === 'video'
+          (ep: { entryPointType: string; uri: string }) =>
+            ep.entryPointType === 'video' || (ep.uri && ep.uri.includes('meet.google.com'))
         );
-        if (videoEntry) {
+        if (videoEntry?.uri) {
           meetUrl = videoEntry.uri;
         }
       }
 
-      // If no video link exists, synthesize a standard Google Meet room URL from event ID
+      // Check if location or description explicitly has a meet.google.com link
       if (!meetUrl) {
-        meetUrl = `https://meet.google.com/abc-${item.id.slice(0, 4)}-xyz`;
+        const textToCheck = `${item.location || ''} ${item.description || ''}`;
+        const match = textToCheck.match(/https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i);
+        if (match) {
+          meetUrl = match[0];
+        }
+      }
+
+      // STRICT FILTER: Discard any calendar entry that does NOT have a valid Google Meet link,
+      // or looks like travel/transit reservations (e.g. Train, Flight, Doctor, Hotel, Reminder)
+      if (!meetUrl || !meetUrl.includes('meet.google.com/')) {
+        continue;
+      }
+
+      const summaryLower = (item.summary || '').toLowerCase();
+      if (
+        summaryLower.startsWith('train to') ||
+        summaryLower.startsWith('flight to') ||
+        summaryLower.includes('reservation') ||
+        summaryLower.includes('booking')
+      ) {
+        continue;
       }
 
       const attendees: MeetingAttendee[] = (item.attendees || []).map(

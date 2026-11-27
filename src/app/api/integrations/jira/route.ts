@@ -3,9 +3,10 @@ import {
   getActionItemsByMeetingId,
   getAllActionItems,
   updateActionItemJira,
+  updateActionItem,
   deleteActionItem,
 } from '@/lib/services/meeting-store';
-import { createJiraIssue } from '@/lib/services/jira';
+import { createJiraIssue, syncJiraIssueStatus } from '@/lib/services/jira';
 import { ActionItem } from '@/types/database';
 import { z } from 'zod';
 
@@ -82,6 +83,25 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   // Return all action items with their current Jira sync status
   const all = await getAllActionItems();
+
+  // Bi-directional sync: check live Jira status for synced items
+  for (const item of all) {
+    if (item.jira_issue_key) {
+      try {
+        const live = await syncJiraIssueStatus(item.jira_issue_key);
+        if (live) {
+          if (live.isDone && item.status !== 'completed') {
+            item.status = 'completed';
+            await updateActionItem(item.id, { status: 'completed' });
+          } else if (!live.isDone && item.status === 'completed') {
+            item.status = 'synced_to_jira';
+            await updateActionItem(item.id, { status: 'synced_to_jira' });
+          }
+        }
+      } catch {}
+    }
+  }
+
   return NextResponse.json({
     success: true,
     count: all.length,

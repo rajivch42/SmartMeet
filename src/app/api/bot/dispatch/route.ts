@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { dispatchRecallBot, generateDemoTranscript } from '@/lib/services/recall-bot';
+import { getCaptureProvider } from '@/lib/services/capture';
+import { generateDemoTranscript } from '@/lib/services/recall-bot';
 import { getMeetingById, updateMeetingStatus, saveTranscript } from '@/lib/services/meeting-store';
 import { z } from 'zod';
 
@@ -24,11 +25,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Dispatch Recall.ai Bot
-    const botResult = await dispatchRecallBot({
+    // Dispatch Meeting Bot (Recall.ai or Custom Own Bot Worker via Provider)
+    const provider = getCaptureProvider();
+    const botName = provider.name === 'own' ? 'My Own Bot' : 'AutoSync AI Assistant';
+    console.log(`[BOT_DISPATCH] Dispatching via provider: "${provider.name}" with bot name: "${botName}"`);
+
+    const botResult = await provider.dispatch({
       meetingUrl: meeting.meeting_url,
       meetingId: meeting.id,
-      botName: 'AutoSync AI Assistant',
+      botName,
     });
 
     // Update status to bot_dispatched
@@ -43,6 +48,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: {
+          provider: provider.name,
           bot_id: botResult.botId,
           status: 'transcribed',
           meeting: updatedMeeting,
@@ -54,9 +60,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
+        provider: provider.name,
         bot_id: botResult.botId,
         status: 'bot_dispatched',
-        message: 'Bot successfully dispatched to Google Meet! Please click "Admit" in your meeting window when the bot joins.',
+        message: `Bot ("${botName}") successfully dispatched to Google Meet via ${provider.name === 'own' ? 'My Own Bot Worker' : 'Recall.ai'}! Please click "Admit" in your meeting window when the bot knocks.`,
       },
     });
   } catch (error: unknown) {
