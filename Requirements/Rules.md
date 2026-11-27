@@ -8,11 +8,12 @@
 | Category | Standard to USE | Anti-Pattern to AVOID | Rationale |
 | :--- | :--- | :--- | :--- |
 | **Authentication** | **Supabase Auth** (`@supabase/ssr`, `@supabase/supabase-js`) | **Custom JWT/Session Engine or NextAuth v4** | Supabase Auth provides bulletproof Google OAuth, session cookies for Server Components, and direct integration with Postgres Row-Level Security without writing custom cryptographic session managers. |
-| **Meeting Bot & Capture** | **Recall.ai REST API & Webhooks** | **Custom Puppeteer/Playwright / WebRTC server** | Building a headless browser bot to join Google Meet from scratch involves complex audio routing, CAPTCHAs, CPU scaling, and WebRTC renegotiation. Recall.ai handles call lifecycle via simple REST calls. |
-| **Speech-to-Text** | **Recall.ai Built-in Transcription** | **Self-hosted Whisper / Custom Audio Streaming Pipe** | The webhook payload from Recall.ai provides formatted, diarized, and timestamped transcripts out-of-the-box. Writing a custom audio splitter and streaming WebSocket to Whisper is an unnecessary failure point for an MVP. |
+| **Meeting Capture** | **Dual Engine: Recall.ai (Google Meet) + Native WebRTC Studio (`/meet/[id]`)** | **Custom Puppeteer/Playwright headless bots scraping Google Meet** | Google actively detects and blocks unauthenticated headless Chromium bots (`You can't join this video call`). Standard calls use Recall.ai, while in-app meetings run on native WebRTC mesh with Supabase Realtime broadcast signaling. |
+| **Speech-to-Text** | **Browser SpeechRecognition (<200ms) + Recall.ai Diarization** | **Complex custom audio streaming pipelines** | Browser Web Speech API provides sub-second live typing feedback, auto-finalized with a 1.2s silence detector. Recall.ai delivers complete webhook transcripts for scheduled external calls. |
+| **AI Summarization** | **Google Gemini 2.5 Flash (`@google/genai`) / Claude 3.5 / GPT-4o** | **Unstructured or unbounded prompt output** | Strict Zod validation and structured JSON mode are enforced across all model calls to guarantee valid Decision, Discussion, and Action Item extractions. |
 | **Styling** | **Vanilla CSS + CSS Modules** | **Tailwind CSS (unless explicitly requested) or heavy UI kits (MUI)** | Ensures complete control over design tokens, glassmorphic styling, zero CSS build friction, lightweight bundle size, and crisp visual hierarchy without class bloat. |
 | **State Management** | **React Server Components (RSC) + React 18 `useState` / `useTransition`** | **Redux, MobX, or Complex State Machines** | The application is predominantly document- and table-driven. Server components handle data fetching; client components handle local interactive state (e.g. tabs, drawers, search inputs). |
-| **Validation** | **Zod** (`zod`) | **Unchecked `as any` type assertions** | External webhook payloads from Recall.ai and LLM JSON outputs must be parsed through strict Zod schemas to prevent runtime crashes during the live presentation. |
+| **Validation** | **Zod** (`zod`) | **Unchecked `as any` type assertions** | External webhook payloads and LLM JSON outputs must be parsed through strict Zod schemas to prevent runtime crashes during presentations. |
 
 ---
 
@@ -59,6 +60,7 @@ For a multi-week college project presentation, **demo reliability and fault tole
 2. **Server vs. Client Boundary Isolation**:
    - **NEVER** prefix sensitive API keys with `NEXT_PUBLIC_`.
    - The following keys must **ONLY** be accessed in server environments (API Route Handlers, Server Actions, or `lib/services/*`):
+     - `GEMINI_API_KEY`
      - `RECALL_AI_API_KEY`
      - `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`
      - `JIRA_API_TOKEN`

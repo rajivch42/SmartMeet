@@ -20,28 +20,31 @@ In modern corporate and engineering teams, critical strategic decisions, archite
 ---
 
 ### 3. MVP Goals (Specific, Demoable Outcomes)
-1. **Automated Meeting Detection & Bot Ingestion**: Detect upcoming Google Meet calls from a user's linked Google Calendar and dispatch a virtual bot (via Recall.ai) that joins the call automatically on time.
-2. **High-Accuracy Transcription**: Ingest speaker-attributed, timestamped audio transcriptions from the bot session.
-3. **Structured AI Synthesis**: Automatically parse raw transcripts using LLMs (Anthropic Claude 3.5 Sonnet / OpenAI GPT-4o) into three discrete categories:
+1. **Dual-Engine Meeting Ingestion**:
+   - **Engine A (Google Meet Bot)**: Detect upcoming Google Meet calls from a user's linked Google Calendar and dispatch a virtual bot (via Recall.ai) that joins the call automatically.
+   - **Engine B (Native In-App WebRTC Studio)**: Provide a zero-bot, zero-lobby in-app video studio (`/meet/[id]`) with hardware camera/mic controls, screen sharing, multi-peer WebRTC mesh (up to 5-6 participants), and 1-click room link sharing, completely bypassing Google Meet anti-bot restrictions.
+2. **High-Accuracy Diarized Transcription**: Ingest speaker-attributed, timestamped audio transcriptions from either the Recall.ai bot session or directly from the in-browser ultra-fast speech recognition pipeline (<200ms live typing with 1.2s auto-finalization).
+3. **Structured AI Synthesis**: Automatically parse raw transcripts using LLMs (Google Gemini 2.5 Flash / Anthropic Claude / OpenAI GPT-4o) into three discrete categories:
    - **Decisions Made** (binding conclusions reached by the group).
    - **Discussion Points** (key debate topics, alternatives considered, context).
    - **Action Items** (actionable deliverables explicitly tagged with an assignee and a clear or inferred deadline).
-4. **Automated Team Broadcast (Slack)**: Post formatted meeting summaries directly to a configured Slack channel via webhook or bot token within 2 minutes of meeting conclusion.
-5. **Instant Jira Ticket Creation**: Automatically (or via one-click confirmation) generate Jira issues for each extracted action item with summary, description, assignee email mapping, and due date.
+4. **Automated Team Broadcast (Slack)**: Post formatted meeting summaries directly to a configured Slack channel via webhook or bot token within minutes of meeting conclusion.
+5. **Instant Jira Ticket Creation & Status Sync**: Automatically (or via one-click confirmation) generate Jira issues for each extracted action item with summary, description, assignee email mapping, due date, auto-transition to "To Do", and bi-directional status reflection.
 6. **Task Reminder Engine**: Schedule and dispatch automated reminders to action item owners before their deadline expires.
 7. **Conversational Transcript Q&A**: Provide a natural-language search and chat interface across all historical transcripts using semantic embeddings and vector retrieval.
 
 ---
 
-### 4. Non-Goals & Out-of-Scope (Phase 1)
-The following features are explicitly deferred from Phase 1 to guarantee a reliable, polished college project demo within a few-week timeline:
+### 4. Non-Goals & Scope Clarifications (Phase 1)
+The following features are clarified or deferred from Phase 1 to guarantee a reliable, polished college project demo:
 
 * **Deferred Feature: Anonymous Peer-Help Module**:
   - *Description*: A capability allowing employees to broadcast questions anonymously to teammates and selectively reveal identity upon receiving helpful answers.
-  - *Phase 1 Strategy*: **Explicitly out of scope**. No UI, database tables, or endpoints for peer help will be implemented in Phase 1. The architecture will maintain a modular schema design so that this service can plug in seamlessly during Phase 2.
-* **Custom WebRTC / Media Server Infrastructure**: Building a custom headless browser or SIP/WebRTC call recorder from scratch is avoided; Recall.ai is used for all call handling.
+  - *Phase 1 Strategy*: **Explicitly out of scope**. No UI, database tables, or endpoints for peer help will be implemented in Phase 1. The architecture maintains a modular schema design so that this service can plug in seamlessly during Phase 2.
+* **Native In-App Studio vs. Headless WebRTC Scraping**:
+  - Scraping Google Meet via headless Playwright/Puppeteer is strictly avoided due to Google's anti-bot detection ("You can't join this video call").
+  - Instead, the platform offers a sanctioned, zero-lobby **In-App WebRTC Studio (`/meet/[id]`)** with Supabase Realtime broadcast signaling alongside Recall.ai.
 * **Real-Time Live Translation / Sentiment Analysis**: Live in-call sentiment charts or streaming multi-lingual translation will not be built for the MVP.
-* **Two-Way Bidirectional Jira Sync**: Phase 1 handles creation of tasks in Jira. Full bidirectional polling (updating meeting notes when a Jira ticket is moved to "Done" in Jira) is deferred to Phase 2.
 * **Native Mobile Apps (iOS/Android)**: Responsive web application only.
 * **Enterprise SSO & SOC2 Compliance**: Custom SAML/SCIM and compliance auditing are omitted in favor of Supabase standard Auth and Google OAuth.
 

@@ -19,16 +19,19 @@ By integrating directly with **Google Calendar**, **Recall.ai**, **Anthropic Cla
 
 ## 2. Planning Documents Index
 
-This repository contains a complete suite of six architecture and planning specifications established prior to application code implementation:
+This folder contains the complete suite of architecture, specification, and runbook documentation for the platform:
 
 | Document | File Link | Primary Purpose |
 | :--- | :--- | :--- |
-| **Project Requirements Document** | [`PRD.md`](./PRD.md) | Problem statement, target personas, MVP goals, non-goals, Phase 1 user stories, and college presentation success criteria. |
-| **System Architecture** | [`Architecture.md`](./Architecture.md) | End-to-end data flow with sequence diagrams, full tech stack breakdown, Next.js folder hierarchy, Supabase PostgreSQL schema with `pgvector`, and external API responsibilities. |
-| **Engineering Rules & Conventions** | [`Rules.md`](./Rules.md) | Approved libraries vs. anti-patterns, demo-first error resilience philosophy, secrets/API key isolation, TypeScript standards, and strict constraints (what the AI must NOT do). |
-| **Implementation Phases** | [`Phases.md`](./Phases.md) | Multi-week college timeline broken into 7 sequential milestones (Phase 0 to 6), detailing deliverables, tasks, and "Done When" verification gates. |
-| **Design System & UI Specs** | [`Design.md`](./Design.md) | High-trust corporate SaaS aesthetic, CSS design tokens, color palette, typography hierarchy, and wireframes for Dashboard, Meeting Detail, Tasks, and Settings. |
-| **Master Overview & Runbook** | [`README.md`](./README.md) | Executive summary, documentation navigation, local setup instructions, environment variables, and live demo script. |
+| **Project Requirements Document** | [`PRD.md`](./PRD.md) | Problem statement, target personas, MVP goals, non-goals, Phase 1 user stories, and presentation success criteria. |
+| **System Architecture** | [`Architecture.md`](./Architecture.md) | End-to-end data flow with sequence diagrams, In-App WebRTC Studio architecture, tech stack breakdown, and database schema. |
+| **Engineering Rules & Conventions** | [`Rules.md`](./Rules.md) | Approved libraries vs. anti-patterns, demo-first resilience philosophy, secrets isolation, TypeScript standards, and strict constraints. |
+| **Implementation Phases** | [`Phases.md`](./Phases.md) | Sequential milestones (Phase 0 to 6), detailing deliverables, tasks, and "Done When" verification gates. |
+| **Design System & UI Specs** | [`Design.md`](./Design.md) | High-trust corporate SaaS aesthetic, CSS design tokens, color palette, typography hierarchy, and wireframes. |
+| **Presentation Runbook** | [`DEMO_RUNBOOK.md`](./DEMO_RUNBOOK.md) | 7-minute minute-by-minute speaking script, click instructions, and technical Q&A defense answers for evaluators. |
+| **Progress Memory Log** | [`Memory.md`](./Memory.md) | Chronological progress log, verified milestones, architectural decisions, and current deployment status. |
+| **System Memory Specification** | [`PROJECT_ARCHITECTURE_AND_SYSTEM_SUMMARY.md`](./PROJECT_ARCHITECTURE_AND_SYSTEM_SUMMARY.md) | Deep-dive system architecture, calendar hygiene filters, and workflow definitions. |
+| **Self-Hosted Bot Feasibility** | [`OWN_BOT_WORKER_FEASIBILITY_AND_BLUEPRINT.md`](./OWN_BOT_WORKER_FEASIBILITY_AND_BLUEPRINT.md) | Technical blueprint and feasibility analysis for custom Playwright bot workers. |
 
 ---
 
@@ -37,10 +40,15 @@ This repository contains a complete suite of six architecture and planning speci
 * **Frontend & Backend**: Next.js 14+ (App Router, TypeScript)
 * **Styling**: Vanilla CSS + CSS Modules with custom CSS variable design tokens
 * **Database & Auth**: Supabase (PostgreSQL with `pgvector` extension + Supabase Auth)
-* **Meeting Bot Infrastructure**: Recall.ai API
-* **Speech-to-Text**: Built-in diarized transcription pipeline via Recall.ai
-* **AI Summarization & Embeddings**: Anthropic Claude 3.5 Sonnet / OpenAI GPT-4o (`text-embedding-3-small`)
-* **Integrations**: Google Calendar API v3, Slack Web API & Incoming Webhooks, Jira Cloud REST API v3
+* **Realtime Signaling**: Supabase Realtime Broadcast (`meet:${meetingId}`)
+* **Meeting Architecture (Dual-Engine)**:
+  - **In-App Studio**: Native WebRTC mesh (up to 5-6 participants) with zero lobby queues and zero bot blocking at `/meet/[id]`
+  - **Bot Pipeline**: Recall.ai API for Google Meet automatic bot dispatch
+* **Speech-to-Text**:
+  - In-browser continuous `SpeechRecognition` (<200ms live typing with 1.2s auto-finalization)
+  - Recall.ai built-in speaker diarization pipeline
+* **AI Summarization & Embeddings**: Google Gemini 2.5 Flash (`@google/genai`) / Claude 3.5 Sonnet / OpenAI GPT-4o (`text-embedding-3-small`)
+* **Integrations**: Google Calendar API v3, Slack Web API & Incoming Webhooks, Jira Cloud REST API v3 (with bi-directional status sync)
 * **Hosting**: Vercel (Web App) + Supabase Cloud (Database & Auth)
 
 ---
@@ -58,14 +66,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 
 # ==========================================
-# 2. Recall.ai (Meeting Bot Service)
+# 2. Recall.ai (Meeting Bot Service - Optional for In-App Room)
 # ==========================================
 RECALL_AI_API_KEY="your-recall-ai-api-key"
 RECALL_AI_REGION="us-east-1"
 
 # ==========================================
-# 3. LLM Provider (Summarization & Embeddings)
+# 3. LLM Provider (Primary: Gemini 2.5 Flash)
 # ==========================================
+GEMINI_API_KEY="AIzaSy..."
 ANTHROPIC_API_KEY="sk-ant-api03-..."
 OPENAI_API_KEY="sk-proj-..." # Used for text-embedding-3-small vector embeddings
 

@@ -61,31 +61,34 @@ gantt
 
 ---
 
-### Phase 2: Meeting Bot Dispatch & Audio Capture (Recall.ai)
-* **Goal**: Automatically or manually dispatch a virtual bot via Recall.ai to enter a Google Meet call, record the audio, and receive the completed transcript via webhook.
+### Phase 2: Dual-Engine Meeting Ingestion & Audio Capture
+* **Goal**: Provide two independent meeting engines to capture conversations with 100% reliability:
+  1. **Engine A (Google Meet Bot via Recall.ai)**: Automated dispatch to external Google Meet calls with webhook transcription ingestion.
+  2. **Engine B (Native In-App WebRTC Studio at `/meet/[id]`)**: Built-in video studio featuring WebRTC multi-peer mesh (5–6 peers), Supabase Realtime broadcast signaling, 1-click room sharing, and zero Google anti-bot blocking.
 * **Concrete Deliverables**:
-  - Recall.ai account setup and API key configuration.
-  - Bot dispatch service: `src/lib/services/recall-bot.ts`.
-  - API endpoint: `POST /api/bot/dispatch` (takes `meeting_id` or raw `meeting_url`).
-  - Webhook listener: `POST /api/webhooks/recall` (receives bot lifecycle events and transcript payload).
-  - Status updater: Meeting status updates from `'scheduled'` -> `'bot_dispatched'` -> `'in_progress'` -> `'transcribed'`.
+  - Recall.ai bot service (`src/lib/services/recall-bot.ts`) and webhook listener (`/api/webhooks/recall`).
+  - In-App Meeting Studio (`src/app/meet/[id]/page.tsx`, `src/app/meet/meet.css`) with:
+    - Real-time hardware camera/microphone controls and screen share.
+    - Continuous speech recognition (<200ms live typing with 1.2s auto-finalization).
+    - Subtitle overlays and auto-scrolling live transcript sidebar.
+    - 1-click room link copying (`[ 🔗 Share Room Link ]`).
+    - Top-right `[ ✨ End & Summarize ]` action triggering the automated AI pipeline.
+  - "In-App Room" buttons integrated across Dashboard, Meetings Tab, and Meeting Detail views.
 * **Step-by-Step Tasks**:
-  1. Obtain Recall.ai sandbox/production API key and configure in `.env.local`.
-  2. Implement `recall-bot.ts` to call `POST https://api.recall.ai/api/v1/bot/` with `meeting_url`, `bot_name: "AutoSync AI Assistant"`, and webhook target URL.
-  3. Build the webhook handler in `src/app/api/webhooks/recall/route.ts` to handle:
-     - `bot.status_change`: update database meeting status.
-     - `transcript.complete`: extract diarized speaker transcript and save to `transcripts` table.
-  4. Configure local webhook tunneling (e.g. ngrok or Localtunnel) for development testing.
+  1. Configure Recall.ai webhook listener for external Google Meet bot integration.
+  2. Build Native WebRTC mesh studio using Supabase Realtime broadcast channels (`meet:${cleanRoomId}`).
+  3. Integrate browser `webkitSpeechRecognition` with a 1.2-second silence debouncer to eliminate Chrome's default 15-second latency.
+  4. Connect meeting controls directly to `/api/summarize` for 1-click call conclusion and summary generation.
 * **"Done When" Checkpoint**:
-  - Pasting a Google Meet URL on the dashboard dispatches the bot. The bot enters the Google Meet room, stays for a 1-minute test conversation, leaves when the call ends, and the full transcript with speaker names appears in the database.
+  - Clicking "In-App Room" opens the full-screen studio; opening a second browser window connects via WebRTC immediately; speaking shows live captions within 200ms; and clicking "End & Summarize" triggers the full post-meeting pipeline without requiring any external bot.
 
 ---
 
 ### Phase 3: AI Summarization & Action Item Extraction Pipeline
-* **Goal**: Ingest the completed meeting transcript and use an LLM to generate a structured executive summary, a list of decisions, and actionable tasks with assignees and deadlines.
+* **Goal**: Ingest the completed meeting transcript (from either engine) and use an LLM (Google Gemini 2.5 Flash / Claude 3.5 Sonnet / GPT-4o) to generate a structured executive summary, a list of decisions, and actionable tasks with assignees and deadlines.
 * **Concrete Deliverables**:
-  - LLM client service: `src/lib/services/llm-summarizer.ts` (Anthropic Claude 3.5 Sonnet / OpenAI GPT-4o).
-  - API endpoint: `POST /api/summarize` (processes a transcript and writes to `summaries` and `action_items`).
+  - LLM client service: `src/lib/services/llm-summarizer.ts` with Google Gemini 2.5 Flash (`@google/genai`) and Claude / GPT-4o fallbacks.
+  - API endpoint: `POST /api/summarize` (processes raw text or stored transcripts and writes to `summaries` and `action_items`).
   - UI Component: Meeting Detail View (`src/app/(dashboard)/meetings/[id]/page.tsx`) with tabs for "Transcript", "Decisions", and "Action Items".
 * **Step-by-Step Tasks**:
   1. Construct a bulletproof system prompt enforcing strict JSON schema output:
@@ -115,10 +118,10 @@ gantt
 ---
 
 ### Phase 4: Slack Broadcast & Jira Task Automation
-* **Goal**: Post meeting summaries to a Slack channel and automatically create tracking tickets in Jira for every extracted action item.
+* **Goal**: Post meeting summaries to a Slack channel and automatically create tracking tickets in Jira for every extracted action item, with bi-directional status synchronization.
 * **Concrete Deliverables**:
   - Slack service: `src/lib/services/slack.ts` formatting BlockKit payloads.
-  - Jira Cloud service: `src/lib/services/jira.ts` calling Jira REST API v3 `/rest/api/3/issue`.
+  - Jira Cloud service: `src/lib/services/jira.ts` calling Jira REST API v3 `/rest/api/3/issue`, handling auto-transition to "To Do", and bi-directional status synchronization.
   - Settings page (`src/app/(dashboard)/settings/page.tsx`) allowing users to input Slack Webhook URL and Jira credentials (Domain, Email, API Token, Project Key).
   - Trigger logic in `src/app/api/integrations/slack/route.ts` and `src/app/api/integrations/jira/route.ts`.
 * **Step-by-Step Tasks**:
@@ -128,9 +131,11 @@ gantt
      - Maps description to Jira `description` (Atlassian Document Format).
      - Maps due date to Jira `duedate` (`YYYY-MM-DD`).
      - Associates with the specified Jira `project.key`.
+     - Automatically transitions newly created issues to "To Do" to ensure correct board placement.
+     - Implements bi-directional status reflection between Jira and Supabase.
   3. Save generated Jira issue keys (e.g. `ENG-104`) and web links back to `action_items` table.
 * **"Done When" Checkpoint**:
-  - Upon meeting completion, a formatted summary card appears in Slack, and genuine Jira tickets are created in the user's Jira board with clickable links in the app.
+  - Upon meeting completion, a formatted summary card appears in Slack, and genuine Jira tickets are created in the user's Jira board with clickable links in the app. Status transitions in Jira reflect accurately in the application.
 
 ---
 

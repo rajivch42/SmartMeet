@@ -77,13 +77,57 @@ sequenceDiagram
 | **Full-Stack Framework** | **Next.js 14+ (App Router, TypeScript)** | Unified codebase for React frontend and serverless API route handlers. Rapid iteration, SSR/RSC speed, and seamless deployment. |
 | **Styling & Design System** | **Vanilla CSS + CSS Modules** | Zero external CSS framework lock-in, ultra-fast render performance, fine-grained control over corporate dark/light glassmorphic tokens without Tailwind bloat. |
 | **Database & Auth** | **Supabase (PostgreSQL + Auth + pgvector)** | Hosted relational database with instant Row-Level Security (RLS), built-in Google OAuth2, native vector search extension (`pgvector`) for transcript embeddings, and instant REST/real-time subscriptions. |
-| **Meeting Bot Infrastructure** | **Recall.ai API** | Universal meeting-bot-as-a-service. Avoids spinning up custom Chromium instances, headless audio routing, or virtual sound cards on bare VMs. Handles Google Meet / Zoom natively. |
-| **Speech-to-Text (STT)** | **Recall.ai Built-in Transcription** | Automated transcription with speaker diarization and millisecond-accurate timestamps provided directly in Recall.ai webhook payloads (Deepgram/Whisper under the hood). |
-| **AI Summarization & Q&A** | **Anthropic Claude 3.5 Sonnet / OpenAI GPT-4o** | High reasoning capability, large context windows (200k tokens), and robust structured JSON mode adherence for extracting decisions and tasks. Embeddings via `text-embedding-3-small`. |
+| **Meeting Bot Infrastructure** | **Recall.ai API** | Universal meeting-bot-as-a-service for standard Google Meet call dispatch and automated audio/video recording. |
+| **In-App Video Studio** | **Native WebRTC + Supabase Realtime** | In-app studio (`/meet/[id]`) with full-mesh WebRTC for 5–6 participants, Supabase broadcast signaling, 0 lobby wait, and 0 Google anti-bot blocking. |
+| **Speech-to-Text (STT)** | **Dual-Engine Transcription** | 1. Built-in Recall.ai diarized pipeline.<br>2. Browser SpeechRecognition with <200ms live interim typing, 1.2s silence auto-finalization, and speaker tagging. |
+| **AI Summarization & Q&A** | **Google Gemini 2.5 Flash / Claude 3.5 / GPT-4o** | Fast structured JSON extraction via `@google/genai` (Gemini 2.5 Flash) with fallback to Claude 3.5 Sonnet and OpenAI GPT-4o. Embeddings via `text-embedding-3-small`. |
 | **Calendar Sync** | **Google Calendar API (v3)** | Read-only access to primary calendars to pull upcoming meetings, Google Meet URLs, and attendee email lists. |
 | **Team Messaging** | **Slack Web API / Incoming Webhooks** | Posting formatted BlockKit summaries into team channels. |
-| **Issue Tracking** | **Jira Cloud REST API (v3)** | Creating task issues with descriptions, story points, assignees, and deadlines. |
+| **Issue Tracking** | **Jira Cloud REST API (v3)** | Creating task issues with descriptions, story points, assignees, due dates, and bi-directional status reflection. |
 | **Hosting & Operations** | **Vercel + Supabase Cloud** | Zero-devops deployment pipeline with free tier support ideal for rapid college MVP demonstration. |
+
+---
+
+### 2.1 In-App Meeting Studio Architecture (`/meet/[id]`)
+
+To overcome third-party meeting platform lobby restrictions and Google Meet automated bot blocking (`You can't join this video call`), the platform implements a native in-browser meeting room:
+
+```mermaid
+flowchart TD
+    subgraph Browser Studio ["Client Browser Studio (/meet/[id])"]
+        A[Local MediaStream: Cam & Mic] --> B[Web Audio Analyser: Waveform Level]
+        A --> C[Local Video Element]
+        A --> D[SpeechRecognition Engine]
+        D -->|"< 200ms Live Words"| E[Live Subtitle & Sidebar Feed]
+        D -->|"1.2s Silence Auto-Commit"| F[Committed Transcript Line]
+    end
+
+    subgraph Supabase Realtime ["Supabase Realtime Channel (meet:room_id)"]
+        G[WebRTC SDP Offer / Answer Exchange]
+        H[ICE Candidates Relay]
+        I[Peer Captions & Interim Broadcast]
+    end
+
+    subgraph Peer Connections ["Multi-Peer Mesh (5-6 Participants)"]
+        J[RTCPeerConnection 1..N]
+    end
+
+    subgraph Post Call Pipeline ["End & Summarize Pipeline (/api/summarize)"]
+        K[Gemini 2.5 Flash Structured JSON Extraction]
+        L[Slack BlockKit Broadcast]
+        M[Jira Cloud Issue Creation & Auto 'To Do' Transition]
+    end
+
+    C <--> J
+    F -->|Broadcast| I
+    Browser Studio <--> Supabase Realtime
+    Browser Studio -->|End & Summarize CTA| Post Call Pipeline
+```
+
+* **Signaling Channel**: Supabase Realtime Channel (`meet:${cleanRoomId}`) handles mesh discovery, WebRTC SDP Offer/Answer exchanges, and ICE candidates without requiring a custom signaling server.
+* **Low Latency Speech Recognition**: Chrome/Edge `webkitSpeechRecognition` captures speech. Interim results render in <200ms with a pulsing cursor, while a 1.2-second pause detector auto-finalizes sentences and broadcasts them to all peers.
+* **1-Click Share Link**: Hosts copy the room link directly with `[ 🔗 Share Room Link ]`, allowing teammates to enter immediately with zero account registration or lobby queues.
+* **Automated Action Synthesis**: Clicking `[ ✨ End & Summarize ]` passes the compiled diarized transcript directly to `/api/summarize` for instant AI synthesis, Slack publishing, and Jira ticket creation.
 
 ---
 
