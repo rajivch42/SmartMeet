@@ -308,6 +308,21 @@ export default function MeetingsPage() {
                         )}
 
                         <Link
+                          href={`/meet/${m.id}`}
+                          className="dash-btn-glass"
+                          style={{
+                            borderColor: 'rgba(99, 102, 241, 0.5)',
+                            background: 'rgba(99, 102, 241, 0.2)',
+                            color: '#C7D2FE',
+                            fontWeight: 500,
+                          }}
+                          title="Start or join in-app video room with live person-wise captions (no bot blocking)"
+                        >
+                          <Video size={14} style={{ color: '#818CF8' }} />
+                          <span>In-App Room</span>
+                        </Link>
+
+                        <Link
                           href={`/meetings/${m.id}`}
                           className="dash-link-details"
                           aria-label={`View details for ${m.title}`}

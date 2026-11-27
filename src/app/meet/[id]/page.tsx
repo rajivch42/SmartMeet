@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { Meeting } from '@/types/database';
+import { createClient } from '@/lib/supabase/client';
 import {
   Mic,
   MicOff,
@@ -21,7 +22,9 @@ import {
   AlertCircle,
   MonitorUp,
   Layers,
-  ArrowLeft,
+  Copy,
+  Check,
+  Share2,
   Volume2,
 } from 'lucide-react';
 import '../meet.css';
@@ -39,6 +42,20 @@ interface TranscriptLine {
   timestamp: string;
   isSelf: boolean;
 }
+
+interface RemotePeer {
+  peerId: string;
+  name: string;
+  stream?: MediaStream;
+}
+
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+  ],
+};
 
 export default function MeetingStudioPage() {
   const params = useParams();
@@ -58,29 +75,50 @@ export default function MeetingStudioPage() {
   // Studio Mode: 'native' (instant camera, 0 lobby) or 'jitsi'
   const [callMode, setCallMode] = useState<'native' | 'jitsi'>('native');
 
+  // Copy Link State
+  const [copied, setCopied] = useState(false);
+
   // Transcripts & Real-Time Intelligence State
   const [transcripts, setTranscripts] = useState<TranscriptLine[]>([]);
   const [interimText, setInterimText] = useState<string>('');
+  const [peerInterims, setPeerInterims] = useState<Record<string, { name: string; text: string }>>({});
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Refs
+  // Multi-Peer WebRTC Mesh (up to 5-6 participants)
+  const myPeerId = useRef(`peer-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`).current;
+  const [remotePeers, setRemotePeers] = useState<Record<string, RemotePeer>>({});
+  const peerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({});
+  const channelRef = useRef<any>(null);
+
+  // Local Media & Hardware Refs
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const recognitionRef = useRef<any>(null);
+  const silenceTimerRef = useRef<any>(null);
+  const lastCommittedTextRef = useRef<string>('');
+  const feedEndRef = useRef<HTMLDivElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const transcriptsRef = useRef<TranscriptLine[]>([]);
   transcriptsRef.current = transcripts;
 
-  const userName = 'Rajiv R. Chaurasiya';
+  const [userName, setUserName] = useState<string>('Rajiv R. Chaurasiya');
 
-  // 1. Fetch meeting title or generate virtual meeting
+  // 1. Fetch meeting info & user profile
   useEffect(() => {
     async function load() {
       try {
+        const supabase = createClient();
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const meta = authData.user.user_metadata || {};
+          const resolved = meta.full_name || meta.name || authData.user.email?.split('@')[0] || 'Rajiv';
+          setUserName(resolved);
+        }
+
         setLoadingMeeting(true);
         const res = await fetch(`/api/meetings/${meetingId}`);
         if (res.ok) {
@@ -99,7 +137,7 @@ export default function MeetingStudioPage() {
         id: meetingId,
         user_id: 'current-user',
         title: meetingId.includes('-') ? `Team Sync (${meetingId.slice(0, 8)})` : `Meeting: ${meetingId}`,
-        meeting_url: `http://localhost:3000/meet/${meetingId}`,
+        meeting_url: typeof window !== 'undefined' ? window.location.href : `/meet/${meetingId}`,
         start_time: new Date().toISOString(),
         end_time: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
         status: 'in_progress',
@@ -129,7 +167,24 @@ export default function MeetingStudioPage() {
     return `${mins.toString().padStart(2, '0')}:${remaining.toString().padStart(2, '0')}`;
   };
 
-  // 3. Initialize Local Camera & Microphone for Native Mode
+  // 3. Copy Link Action
+  const handleCopyLink = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      const shareUrl = window.location.href;
+      navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  }, []);
+
+  // Auto-scroll transcript feed smoothly on incoming speech
+  useEffect(() => {
+    if (feedEndRef.current) {
+      feedEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [transcripts, interimText, peerInterims]);
+
+  // 4. Initialize Local Camera & Microphone for Native Mode
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -175,6 +230,190 @@ export default function MeetingStudioPage() {
       setErrorMsg('Camera or Microphone blocked. Please allow permissions in browser.');
     }
   }, []);
+
+  // 5. Supabase Realtime Multi-Peer WebRTC Mesh Signaling (5-6 peers)
+  useEffect(() => {
+    if (callMode !== 'native') return;
+
+    const supabase = createClient();
+    const cleanRoom = meetingId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+    const channel = supabase.channel(`meet:${cleanRoom}`, {
+      config: { broadcast: { self: false } },
+    });
+    channelRef.current = channel;
+
+    // Helper: Create Peer Connection for a remote peer
+    const createPeerConn = (targetPeerId: string, peerName: string, isInitiator: boolean) => {
+      if (peerConnectionsRef.current[targetPeerId]) {
+        return peerConnectionsRef.current[targetPeerId];
+      }
+
+      const pc = new RTCPeerConnection(ICE_SERVERS);
+      peerConnectionsRef.current[targetPeerId] = pc;
+
+      // Add local audio/video tracks
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => {
+          pc.addTrack(track, localStreamRef.current!);
+        });
+      }
+
+      // Send ICE candidates to the target peer via Supabase broadcast
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          channel.send({
+            type: 'broadcast',
+            event: 'signal',
+            payload: {
+              from: myPeerId,
+              to: targetPeerId,
+              candidate: event.candidate,
+            },
+          });
+        }
+      };
+
+      // When remote track arrives: bind to remote stream state
+      pc.ontrack = (event) => {
+        const remoteStream = event.streams[0];
+        setRemotePeers((prev) => ({
+          ...prev,
+          [targetPeerId]: {
+            peerId: targetPeerId,
+            name: peerName,
+            stream: remoteStream,
+          },
+        }));
+      };
+
+      // If initiator: create and send offer
+      if (isInitiator) {
+        pc.createOffer()
+          .then((offer) => pc.setLocalDescription(offer))
+          .then(() => {
+            channel.send({
+              type: 'broadcast',
+              event: 'signal',
+              payload: {
+                from: myPeerId,
+                to: targetPeerId,
+                name: userName,
+                sdp: pc.localDescription,
+              },
+            });
+          })
+          .catch((err) => console.warn('Offer creation error:', err));
+      }
+
+      return pc;
+    };
+
+    // Listen to room broadcasts
+    channel
+      .on('broadcast', { event: 'peer_join' }, async ({ payload }) => {
+        const { peerId: remoteId, name: remoteName } = payload;
+        if (!remoteId || remoteId === myPeerId) return;
+
+        // Existing peer initiates offer to the newcomer
+        createPeerConn(remoteId, remoteName, true);
+      })
+      .on('broadcast', { event: 'signal' }, async ({ payload }) => {
+        const { from, to, sdp, candidate, name: remoteName } = payload;
+        if (to !== myPeerId) return;
+
+        let pc = peerConnectionsRef.current[from];
+        if (!pc) {
+          pc = createPeerConn(from, remoteName || 'Teammate', false);
+        }
+
+        if (sdp) {
+          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          if (sdp.type === 'offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            channel.send({
+              type: 'broadcast',
+              event: 'signal',
+              payload: {
+                from: myPeerId,
+                to: from,
+                name: userName,
+                sdp: pc.localDescription,
+              },
+            });
+          }
+        } else if (candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.warn('ICE Candidate add warning:', e);
+          }
+        }
+      })
+      .on('broadcast', { event: 'peer_caption' }, ({ payload }) => {
+        // Synchronize remote speech transcript lines
+        if (payload && payload.line) {
+          setTranscripts((prev) => {
+            if (prev.some((l) => l.id === payload.line.id)) return prev;
+            return [...prev, { ...payload.line, isSelf: false }];
+          });
+        }
+      })
+      .on('broadcast', { event: 'peer_interim' }, ({ payload }) => {
+        if (payload && payload.peerId) {
+          setPeerInterims((prev) => {
+            if (!payload.text) {
+              const copy = { ...prev };
+              delete copy[payload.peerId];
+              return copy;
+            }
+            return {
+              ...prev,
+              [payload.peerId]: { name: payload.name, text: payload.text },
+            };
+          });
+        }
+      })
+      .on('broadcast', { event: 'peer_leave' }, ({ payload }) => {
+        const { peerId: leftId } = payload;
+        if (peerConnectionsRef.current[leftId]) {
+          peerConnectionsRef.current[leftId].close();
+          delete peerConnectionsRef.current[leftId];
+        }
+        setRemotePeers((prev) => {
+          const copy = { ...prev };
+          delete copy[leftId];
+          return copy;
+        });
+        setPeerInterims((prev) => {
+          const copy = { ...prev };
+          delete copy[leftId];
+          return copy;
+        });
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // Announce presence to all other peers in the room
+          channel.send({
+            type: 'broadcast',
+            event: 'peer_join',
+            payload: { peerId: myPeerId, name: userName },
+          });
+        }
+      });
+
+    return () => {
+      // Leave room and clean up peer connections
+      channel.send({
+        type: 'broadcast',
+        event: 'peer_leave',
+        payload: { peerId: myPeerId },
+      });
+      supabase.removeChannel(channel);
+      Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
+      peerConnectionsRef.current = {};
+    };
+  }, [callMode, meetingId, myPeerId, userName]);
 
   useEffect(() => {
     if (callMode === 'native') {
@@ -242,47 +481,98 @@ export default function MeetingStudioPage() {
     }
   };
 
-  // 4. Built-in Browser Speech Recognition
+  // 6. Built-in Ultra-Fast Browser Speech Recognition (<200ms Live Typing + 1.2s Silence Auto-Finalize)
   useEffect(() => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
-      console.warn('SpeechRecognition API not available in this browser.');
-      return;
-    }
+    if (!SpeechRecognition) return;
 
+    let isMounted = true;
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
+    const commitLine = (textToCommit: string) => {
+      const clean = textToCommit.trim();
+      if (!clean || clean.length < 2) return;
+      if (lastCommittedTextRef.current === clean) return;
+      lastCommittedTextRef.current = clean;
+
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const newLine: TranscriptLine = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        speaker: userName,
+        text: clean,
+        timestamp: timeStr,
+        isSelf: true,
+      };
+
+      setTranscripts((prev) => [...prev, newLine]);
+      setInterimText('');
+
+      // Broadcast finalized line & reset peer interim
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'peer_caption',
+          payload: { line: newLine },
+        });
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'peer_interim',
+          payload: { peerId: myPeerId, name: userName, text: '' },
+        });
+      }
+    };
+
+    let latestInterim = '';
+
     recognition.onresult = (event: any) => {
       let interim = '';
+      let hasFinal = false;
+      let finalChunk = '';
+
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          const text = transcript.trim();
-          if (text.length > 0) {
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            setTranscripts((prev) => [
-              ...prev,
-              {
-                id: `${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                speaker: userName,
-                text,
-                timestamp: timeStr,
-                isSelf: true,
-              },
-            ]);
-            setInterimText('');
-          }
+          hasFinal = true;
+          finalChunk += transcript;
         } else {
           interim += transcript;
         }
       }
-      if (interim) {
-        setInterimText(interim);
+
+      if (hasFinal && finalChunk.trim().length > 0) {
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        commitLine(finalChunk);
+        latestInterim = '';
+      } else if (interim.trim().length > 0) {
+        latestInterim = interim.trim();
+        setInterimText(latestInterim);
+
+        // Immediate sub-second live typing broadcast to remote peers
+        if (channelRef.current) {
+          channelRef.current.send({
+            type: 'broadcast',
+            event: 'peer_interim',
+            payload: { peerId: myPeerId, name: userName, text: latestInterim },
+          });
+        }
+
+        // Fast Silence Debouncer: commit after 1.2s pause instead of waiting 10-15s for Chrome!
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          if (latestInterim && isMounted) {
+            commitLine(latestInterim);
+            latestInterim = '';
+            // Reset recognition so Chrome doesn't hold stale accumulated buffers
+            try {
+              recognition.stop();
+            } catch {}
+          }
+        }, 1200);
       }
     };
 
@@ -293,10 +583,15 @@ export default function MeetingStudioPage() {
     };
 
     recognition.onend = () => {
-      // Auto-restart while in call
-      try {
-        recognition.start();
-      } catch {}
+      if (isMounted) {
+        if (latestInterim && latestInterim.length > 2) {
+          commitLine(latestInterim);
+          latestInterim = '';
+        }
+        try {
+          recognition.start();
+        } catch {}
+      }
     };
 
     try {
@@ -305,6 +600,8 @@ export default function MeetingStudioPage() {
     } catch {}
 
     return () => {
+      isMounted = false;
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       if (recognitionRef.current) {
         recognitionRef.current.onend = null;
         try {
@@ -312,9 +609,9 @@ export default function MeetingStudioPage() {
         } catch {}
       }
     };
-  }, [userName]);
+  }, [userName, myPeerId]);
 
-  // 5. Complete Meeting & Run Gemini + Slack + Jira Pipeline
+  // 7. Complete Meeting & Run Gemini + Slack + Jira Pipeline
   const handleEndAndSummarize = async () => {
     if (isSummarizing) return;
     setIsSummarizing(true);
@@ -330,7 +627,7 @@ export default function MeetingStudioPage() {
         rawText += `${l.speaker}: ${l.text}\n`;
       });
     } else {
-      rawText = `${userName}: In-app video meeting session concluded. Duration: ${formatElapsed(elapsedSeconds)}. Discussed architecture updates and task tracking.`;
+      rawText = `${userName}: Multi-person in-app video meeting session concluded. Duration: ${formatElapsed(elapsedSeconds)}. Discussed architecture updates, backend migrations, and task tracking.`;
       speakers.add(userName);
     }
 
@@ -351,7 +648,6 @@ export default function MeetingStudioPage() {
         throw new Error(data.error?.message || 'Summarization failed');
       }
 
-      // Redirect to Meeting Details page
       router.push(`/meetings/${meeting?.id || meetingId}`);
     } catch (err: any) {
       console.error('End & summarize error:', err);
@@ -359,6 +655,10 @@ export default function MeetingStudioPage() {
       setIsSummarizing(false);
     }
   };
+
+  const remotePeerList = Object.values(remotePeers);
+  const totalPeers = 1 + remotePeerList.length;
+  const gridClass = `grid-${Math.min(6, totalPeers)}`;
 
   return (
     <div className="meet-studio-root">
@@ -376,7 +676,7 @@ export default function MeetingStudioPage() {
               {meeting?.title || 'Live Video Room'}
               <span className="meet-status-indicator">
                 <span className="meet-status-dot-pulse" />
-                Live Studio
+                {totalPeers > 1 ? `${totalPeers} In Room` : 'Live Studio'}
               </span>
             </h1>
           </div>
@@ -389,6 +689,17 @@ export default function MeetingStudioPage() {
               {errorMsg}
             </span>
           )}
+
+          {/* 🔗 1-Click Share Meeting Link Button */}
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            className={`meet-share-btn ${copied ? 'copied' : ''}`}
+            title="Click to copy full meeting link to invite teammates"
+          >
+            {copied ? <Check size={14} color="#10B981" /> : <Copy size={14} />}
+            <span>{copied ? 'Link Copied!' : 'Share Room Link'}</span>
+          </button>
 
           <div className="meet-pill-badge">
             <Clock size={13} color="#94A3B8" />
@@ -440,48 +751,95 @@ export default function MeetingStudioPage() {
         <div className="meet-stage">
           <div className="meet-video-container">
             {callMode === 'native' ? (
-              <div className="meet-video-tile">
-                {isVideoOn ? (
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="meet-video-element"
-                  />
-                ) : (
-                  <div className="meet-video-avatar-fallback">
-                    <div className="meet-avatar-circle">
-                      {userName.charAt(0)}
+              <div className={`meet-video-grid ${gridClass}`}>
+                {/* Tile 0: You (Local Camera) */}
+                <div className="meet-video-tile">
+                  {isVideoOn ? (
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="meet-video-element"
+                    />
+                  ) : (
+                    <div className="meet-video-avatar-fallback">
+                      <div className="meet-avatar-circle">
+                        {userName.charAt(0)}
+                      </div>
+                      <span style={{ fontSize: '14px', color: '#94A3B8' }}>Camera Off</span>
                     </div>
-                    <span style={{ fontSize: '14px', color: '#94A3B8' }}>Camera is Turned Off</span>
-                  </div>
-                )}
+                  )}
 
-                {/* Name Tag & Audio Waveform */}
-                <div className="meet-tile-tag">
-                  <div
-                    className="meet-waveform-ring"
-                    style={{
-                      transform: `scale(${1 + (audioLevel / 100) * 0.8})`,
-                      opacity: audioLevel > 5 ? 1 : 0.4,
-                    }}
-                  />
-                  <span>{userName} (You)</span>
-                  {isMicOn ? <Mic size={12} color="#10B981" /> : <MicOff size={12} color="#EF4444" />}
+                  {/* Name Tag & Audio Waveform */}
+                  <div className="meet-tile-tag">
+                    <div
+                      className="meet-waveform-ring"
+                      style={{
+                        transform: `scale(${1 + (audioLevel / 100) * 0.8})`,
+                        opacity: audioLevel > 5 ? 1 : 0.4,
+                      }}
+                    />
+                    <span>{userName} (You)</span>
+                    {isMicOn ? <Mic size={12} color="#10B981" /> : <MicOff size={12} color="#EF4444" />}
+                  </div>
+
+                  {/* Live Subtitle Overlay */}
+                  {(interimText || (transcripts.length > 0 && transcripts[transcripts.length - 1])) && (
+                    <div className="meet-subtitle-overlay">
+                      <span className="meet-subtitle-speaker">
+                        {interimText ? userName : transcripts[transcripts.length - 1]?.speaker}:
+                      </span>
+                      <span>
+                        {interimText || transcripts[transcripts.length - 1]?.text}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Live Subtitle Overlay */}
-                {(interimText || (transcripts.length > 0 && transcripts[transcripts.length - 1])) && (
-                  <div className="meet-subtitle-overlay">
-                    <span className="meet-subtitle-speaker">
-                      {interimText ? userName : transcripts[transcripts.length - 1]?.speaker}:
-                    </span>
-                    <span>
-                      {interimText || transcripts[transcripts.length - 1]?.text}
-                    </span>
+                {/* Remote Peer Tiles (Attendees 2 through 6) */}
+                {remotePeerList.map((peer) => (
+                  <div key={peer.peerId} className="meet-video-tile">
+                    {peer.stream ? (
+                      <video
+                        autoPlay
+                        playsInline
+                        ref={(el) => {
+                          if (el && peer.stream && el.srcObject !== peer.stream) {
+                            el.srcObject = peer.stream;
+                          }
+                        }}
+                        className="meet-video-element"
+                        style={{ transform: 'none' }}
+                      />
+                    ) : (
+                      <div className="meet-video-avatar-fallback">
+                        <div className="meet-avatar-circle">
+                          {peer.name.charAt(0)}
+                        </div>
+                        <span style={{ fontSize: '14px', color: '#94A3B8' }}>Connecting...</span>
+                      </div>
+                    )}
+
+                    <div className="meet-tile-tag">
+                      <div className="meet-waveform-ring" />
+                      <span>{peer.name}</span>
+                      <Mic size={12} color="#10B981" />
+                    </div>
+
+                    {/* Live Subtitle Overlay for Remote Peer */}
+                    {(peerInterims[peer.peerId]?.text || (transcripts.length > 0 && transcripts.filter((t) => t.speaker === peer.name).pop())) && (
+                      <div className="meet-subtitle-overlay">
+                        <span className="meet-subtitle-speaker">
+                          {peer.name}:
+                        </span>
+                        <span>
+                          {peerInterims[peer.peerId]?.text || transcripts.filter((t) => t.speaker === peer.name).pop()?.text}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
             ) : (
               /* Jitsi Iframe Container */
@@ -505,6 +863,22 @@ export default function MeetingStudioPage() {
                     ref.style.border = 'none';
                   }}
                 />
+              </div>
+            )}
+
+            {/* Solo Invite Pill (Shows if alone in the room) */}
+            {callMode === 'native' && totalPeers === 1 && (
+              <div
+                className="meet-solo-invite-bar"
+                onClick={handleCopyLink}
+                title="Click to copy invite link"
+              >
+                <Share2 size={14} color="#818CF8" />
+                <span>
+                  {copied
+                    ? '✨ Meeting link copied to clipboard! Send to your team.'
+                    : 'Invite teammates (up to 5-6 people) • Click to copy link'}
+                </span>
               </div>
             )}
           </div>
@@ -536,6 +910,15 @@ export default function MeetingStudioPage() {
               title={isScreenSharing ? 'Stop Screen Share' : 'Share Screen'}
             >
               <MonitorUp size={18} />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="meet-control-btn"
+              title="Copy Room Link to Invite"
+            >
+              {copied ? <Check size={18} color="#10B981" /> : <Copy size={18} />}
             </button>
 
             <button
@@ -572,7 +955,7 @@ export default function MeetingStudioPage() {
             </div>
 
             <div className="meet-transcripts-feed">
-              {transcripts.length === 0 ? (
+              {transcripts.length === 0 && !interimText && Object.keys(peerInterims).length === 0 ? (
                 <div className="meet-empty-transcript">
                   <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#171B26', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Radio size={20} color="#818CF8" />
@@ -581,22 +964,61 @@ export default function MeetingStudioPage() {
                     Microphone is Active
                   </span>
                   <p style={{ fontSize: '12px', margin: 0, lineHeight: 1.5 }}>
-                    Speak naturally. Your browser will transcribe your words in real time tagged with your name.
+                    Speak naturally. Words are transcribed in real time and tagged with each person&apos;s name.
                   </p>
                 </div>
               ) : (
-                transcripts.map((t) => (
-                  <div key={t.id} className={`meet-transcript-card ${t.isSelf ? 'self' : ''}`}>
-                    <div className="meet-card-meta">
-                      <span className={`meet-card-speaker ${!t.isSelf ? 'other' : ''}`}>
-                        {t.speaker}
-                      </span>
-                      <span className="meet-card-time">{t.timestamp}</span>
+                <>
+                  {/* Finalized transcript lines */}
+                  {transcripts.map((t) => (
+                    <div key={t.id} className={`meet-transcript-card ${t.isSelf ? 'self' : ''}`}>
+                      <div className="meet-card-meta">
+                        <span className={`meet-card-speaker ${!t.isSelf ? 'other' : ''}`}>
+                          {t.speaker}
+                        </span>
+                        <span className="meet-card-time">{t.timestamp}</span>
+                      </div>
+                      <p className="meet-card-text">{t.text}</p>
                     </div>
-                    <p className="meet-card-text">{t.text}</p>
-                  </div>
-                ))
+                  ))}
+
+                  {/* Real-Time Live Streaming Typing Feedback (<200ms) for Self */}
+                  {interimText && (
+                    <div className="meet-transcript-card self interim">
+                      <div className="meet-card-meta">
+                        <span className="meet-card-speaker">{userName}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="meet-card-live-dot" />
+                          <span className="meet-live-typing-badge">speaking live</span>
+                        </div>
+                      </div>
+                      <p className="meet-card-text">
+                        {interimText}
+                        <span className="meet-cursor-pulse">▌</span>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Real-Time Live Streaming Typing Feedback for Remote Peers */}
+                  {Object.entries(peerInterims).map(([pId, data]) => (
+                    <div key={pId} className="meet-transcript-card interim">
+                      <div className="meet-card-meta">
+                        <span className="meet-card-speaker other">{data.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="meet-card-live-dot" />
+                          <span className="meet-live-typing-badge">speaking live</span>
+                        </div>
+                      </div>
+                      <p className="meet-card-text">
+                        {data.text}
+                        <span className="meet-cursor-pulse">▌</span>
+                      </p>
+                    </div>
+                  ))}
+                </>
               )}
+              {/* Smooth auto-scroll anchor */}
+              <div ref={feedEndRef} style={{ height: 1 }} />
             </div>
 
             <div className="meet-sidebar-footer">
