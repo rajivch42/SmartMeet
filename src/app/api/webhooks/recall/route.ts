@@ -1,5 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { saveTranscript, updateMeetingStatus } from '@/lib/services/meeting-store';
+import {
+  saveTranscript,
+  updateMeetingStatus,
+  getMeetingById,
+  saveSummary,
+  saveActionItems,
+} from '@/lib/services/meeting-store';
+import { summarizeMeetingTranscript } from '@/lib/services/llm-summarizer';
+import { broadcastSummaryToSlack } from '@/lib/services/slack';
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,6 +56,48 @@ export async function POST(request: NextRequest) {
         });
 
         await updateMeetingStatus(meetingId, 'transcribed', botData?.id);
+
+        // Automatically trigger AI summarization & Slack broadcast in background
+        try {
+          const meeting = await getMeetingById(meetingId);
+          if (meeting) {
+            const summaryResult = await summarizeMeetingTranscript(
+              fullText,
+              meeting.attendees || []
+            );
+
+            const savedSummary = await saveSummary({
+              meeting_id: meetingId,
+              executive_summary: summaryResult.executive_summary,
+              decisions: summaryResult.decisions,
+              discussion_points: summaryResult.discussion_points,
+            });
+
+            const savedActionItems = await saveActionItems(
+              meetingId,
+              summaryResult.action_items.map((item: any) => ({
+                meeting_id: meetingId,
+                title: item.title,
+                description: item.description || null,
+                assignee_name: item.assignee_name || null,
+                assignee_email: item.assignee_email || null,
+                due_date: item.due_date || null,
+                priority: (item.priority as 'low' | 'medium' | 'high') || 'medium',
+                status: 'pending',
+              }))
+            );
+
+            await updateMeetingStatus(meetingId, 'summarized', botData?.id);
+
+            try {
+              await broadcastSummaryToSlack(meeting, savedSummary, savedActionItems);
+            } catch (slackErr) {
+              console.warn('[RECALL_WEBHOOK] Slack broadcast error:', slackErr);
+            }
+          }
+        } catch (sumErr) {
+          console.error('[RECALL_WEBHOOK] AI Summarization error:', sumErr);
+        }
       }
     }
 
