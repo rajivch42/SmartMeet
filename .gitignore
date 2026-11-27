@@ -1,5 +1,8 @@
 # dependencies
-/node_modules
+node_modules/
+**/node_modules/
+bot-worker/node_modules/
+bot-worker/dist/
 /.pnp
 .pnp.js
 

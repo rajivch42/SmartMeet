@@ -1,0 +1,757 @@
+
+
+/* ==========================================================================
+   SMARTMEET HERO SHOWCASE & FRESH LANDING PAGE STYLING
+   ========================================================================== */
+
+.landing-main-root {
+  min-height: 100vh;
+  background-color: #060709;
+  color: #F3F4F6;
+  font-family: var(--font-ui, 'Inter', sans-serif);
+  overflow-x: hidden;
+}
+
+/* Header: Balanced 3-Column Layout */
+.landing-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  backdrop-filter: blur(16px);
+  background: rgba(6, 7, 9, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+}
+
+.landing-header-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.landing-brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  flex: 1;
+}
+
+.landing-logo-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.45);
+}
+
+.landing-logo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 0 8px #FFFFFF;
+}
+
+.landing-brand-title {
+  font-family: var(--font-display, 'Space Grotesk', sans-serif);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #FFFFFF;
+}
+
+/* Centered Navigation Links */
+.landing-nav-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  flex: 2;
+}
+
+.landing-nav-link {
+  color: #94A3B8;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.landing-nav-link:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Right Side: Plain Text Sign In + Start free button */
+.landing-auth-cta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  flex: 1;
+}
+
+.landing-login-text-link {
+  color: #94A3B8;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.landing-login-text-link:hover {
+  color: #FFFFFF;
+}
+
+.landing-signup-btn {
+  background: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%);
+  color: #FFFFFF;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 9px 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landing-signup-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(37, 99, 235, 0.5);
+}
+
+/* ==========================================================================
+   SMARTMEET CARD SHOWCASE (EXACT REPLICATION)
+   ========================================================================== */
+
+.landing-hero-section {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 40px 24px 60px 24px;
+}
+
+.smartmeet-wrapper {
+  width: 100%;
+}
+
+.smartmeet-card {
+  position: relative;
+  width: 100%;
+  border-radius: 36px;
+  background: #F8F9FD;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 32px 80px -16px rgba(0, 0, 0, 0.6), 0 0 60px rgba(99, 102, 241, 0.18);
+  overflow: hidden;
+  padding: 56px 64px;
+  color: #0F172A;
+  box-sizing: border-box;
+}
+
+/* Isometric background grid line effect */
+.smartmeet-grid-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(99, 102, 241, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(99, 102, 241, 0.06) 1px, transparent 1px);
+  mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.2) 80%);
+}
+
+.smartmeet-glow-left {
+  position: absolute;
+  top: -10%;
+  left: -10%;
+  width: 450px;
+  height: 450px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.smartmeet-glow-right {
+  position: absolute;
+  bottom: -20%;
+  right: -10%;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.14) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.smartmeet-content {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  align-items: center;
+  gap: 48px;
+}
+
+/* Left Column */
+.smartmeet-left-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.smartmeet-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px solid rgba(79, 70, 229, 0.22);
+  color: #4338CA;
+  margin-bottom: 22px;
+}
+
+.smartmeet-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4F46E5;
+  box-shadow: 0 0 8px #4F46E5;
+}
+
+.smartmeet-brand-text {
+  font-family: var(--font-ui, 'Inter', sans-serif);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: -0.01em;
+}
+
+/* Scaled & Refined Headline */
+.smartmeet-headline {
+  font-family: var(--font-display, 'Space Grotesk', sans-serif);
+  font-size: clamp(30px, 3.8vw, 48px);
+  font-weight: 800;
+  line-height: 1.18;
+  letter-spacing: -0.03em;
+  color: #0F172A;
+  margin-bottom: 18px;
+}
+
+.smartmeet-gradient-text {
+  background: linear-gradient(135deg, #2563EB 0%, #6366F1 50%, #EC4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Benefit-Driven 2-Line Subtext with Darker WCAG Contrast */
+.smartmeet-subtext {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #334155;
+  max-width: 520px;
+  margin-bottom: 28px;
+  font-weight: 450;
+}
+
+.smartmeet-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+
+.smartmeet-primary-btn {
+  background: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%);
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 13px 26px;
+  border-radius: 12px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.smartmeet-primary-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.45);
+}
+
+.smartmeet-secondary-btn {
+  background: #FFFFFF;
+  color: #0F172A;
+  border: 1px solid #CBD5E1;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 13px 24px;
+  border-radius: 12px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.smartmeet-secondary-btn:hover {
+  background: #F8FAFC;
+  border-color: #94A3B8;
+  transform: translateY(-1px);
+}
+
+/* Bold & High-Contrast Trust Row */
+.smartmeet-trust-bar {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.smartmeet-trust-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: #1E293B;
+}
+
+.trust-icon {
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   RIGHT COLUMN: PORTAL STAGE WITH BALANCED ORBITING BADGES
+   ========================================================================== */
+
+.smartmeet-right-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-height: 440px;
+}
+
+.smartmeet-portal-stage {
+  position: relative;
+  width: 420px;
+  height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Orbital Rings */
+.smartmeet-orbit-ring {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.smartmeet-orbit-outer {
+  width: 400px;
+  height: 400px;
+  border: 1.5px dashed rgba(99, 102, 241, 0.25);
+  animation: smartmeet-spin 60s linear infinite;
+}
+
+.smartmeet-orbit-mid {
+  width: 330px;
+  height: 330px;
+  border: 1px solid rgba(147, 197, 253, 0.45);
+}
+
+@keyframes smartmeet-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Sparkle Icons */
+.smartmeet-sparkle {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  animation: smartmeet-pulse 3s infinite ease-in-out;
+}
+
+.sparkle-1 {
+  top: 18%;
+  left: 20%;
+  color: #818CF8;
+  font-size: 18px;
+  animation-delay: 0s;
+}
+
+.sparkle-2 {
+  bottom: 22%;
+  right: 18%;
+  color: #F472B6;
+  font-size: 16px;
+  animation-delay: 1.2s;
+}
+
+.sparkle-3 {
+  top: 15%;
+  right: 25%;
+  color: #60A5FA;
+  font-size: 13px;
+  animation-delay: 2s;
+}
+
+@keyframes smartmeet-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* Central Glowing Portal Ring */
+.smartmeet-portal-ring {
+  position: relative;
+  width: 250px;
+  height: 250px;
+  border-radius: 50%;
+  padding: 6px;
+  background: linear-gradient(135deg, #6366F1 0%, #38BDF8 50%, #A855F7 100%);
+  box-shadow: 0 0 45px rgba(99, 102, 241, 0.38), inset 0 0 20px rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+
+.smartmeet-photo-frame {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #FFFFFF;
+}
+
+.smartmeet-team-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Floating Glass Badges with Unified Icon Box */
+.smartmeet-badge {
+  position: absolute;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #FFFFFF;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.12), 0 4px 6px -2px rgba(15, 23, 42, 0.05);
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: #1E293B;
+  white-space: nowrap;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: default;
+}
+
+.badge-icon-box {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.smartmeet-badge:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 16px 32px -4px rgba(99, 102, 241, 0.25);
+}
+
+/* Symmetrical 90-Degree Cardinal Positions */
+.badge-top {
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.badge-right {
+  top: 50%;
+  right: -32px;
+  transform: translateY(-50%);
+}
+
+.badge-bottom {
+  bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.badge-left {
+  top: 50%;
+  left: -48px;
+  transform: translateY(-50%);
+}
+
+/* Feature Grid Styling */
+.landing-features-section {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.landing-section-header {
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto 52px auto;
+}
+
+.landing-section-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: #818CF8;
+  font-size: 0.775rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 16px;
+}
+
+.landing-section-title {
+  font-family: var(--font-display, 'Space Grotesk', sans-serif);
+  font-size: clamp(28px, 3.5vw, 42px);
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
+}
+
+.landing-section-desc {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #9CA3AF;
+  margin: 0;
+}
+
+.landing-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+}
+
+.feature-card {
+  background: #0E1015;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 32px 28px;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.7);
+}
+
+.feature-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.feature-card-title {
+  font-family: var(--font-display, 'Space Grotesk', sans-serif);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  margin-bottom: 10px;
+}
+
+.feature-card-text {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #94A3B8;
+  margin-bottom: 20px;
+  flex: 1;
+}
+
+.feature-card-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #818CF8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Workflow Steps */
+.landing-workflow-section {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.workflow-steps-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.workflow-step-card {
+  flex: 1;
+  min-width: 200px;
+  background: #0E1015;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 28px 22px;
+}
+
+.step-number {
+  font-family: var(--font-display, 'Space Grotesk', sans-serif);
+  font-size: 2rem;
+  font-weight: 800;
+  color: #4F46E5;
+  margin-bottom: 10px;
+}
+
+.workflow-step-card h4 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  margin-bottom: 8px;
+}
+
+.workflow-step-card p {
+  font-size: 0.825rem;
+  line-height: 1.5;
+  color: #94A3B8;
+  margin: 0;
+}
+
+.workflow-step-arrow {
+  color: #4B5563;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+/* Bottom CTA */
+.landing-bottom-cta {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 64px 24px 80px 24px;
+}
+
+.bottom-cta-card {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 28px;
+  padding: 64px 32px;
+  text-align: center;
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.6);
+}
+
+.bottom-cta-title {
+  font-family: var(--font-display, 'Space Grotesk', sans-serif);
+  font-size: clamp(26px, 3.2vw, 38px);
+  font-weight: 700;
+  color: #FFFFFF;
+  margin-bottom: 12px;
+}
+
+.bottom-cta-text {
+  font-size: 1.05rem;
+  color: #94A3B8;
+  max-width: 580px;
+  margin: 0 auto 32px auto;
+}
+
+/* Footer */
+.landing-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 32px 24px;
+}
+
+.landing-footer-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+  .smartmeet-content {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .smartmeet-left-col {
+    align-items: center;
+  }
+  .smartmeet-subtext {
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .smartmeet-trust-bar {
+    justify-content: center;
+  }
+  .workflow-step-arrow {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .smartmeet-card {
+    padding: 36px 20px;
+    border-radius: 24px;
+  }
+  .smartmeet-portal-stage {
+    width: 320px;
+    height: 320px;
+  }
+  .smartmeet-portal-ring {
+    width: 200px;
+    height: 200px;
+  }
+  .smartmeet-orbit-outer {
+    width: 290px;
+    height: 290px;
+  }
+  .smartmeet-orbit-mid {
+    width: 240px;
+    height: 240px;
+  }
+  .landing-nav-links {
+    display: none;
+  }
+}
