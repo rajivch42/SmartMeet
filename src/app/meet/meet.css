@@ -1,0 +1,473 @@
+/* ==========================================================================
+   AUTOSYNC MEET - IN-APP VIDEO ROOM & TRANSCRIPTION STUDIO STYLES
+   ========================================================================== */
+
+.meet-studio-root {
+  width: 100vw;
+  height: 100vh;
+  background-color: #060709;
+  color: #F8FAFC;
+  font-family: var(--font-ui, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+}
+
+/* Header Bar */
+.meet-header {
+  height: 60px;
+  background: rgba(13, 16, 23, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  flex-shrink: 0;
+}
+
+.meet-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.meet-brand-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.meet-brand-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+}
+
+.meet-title-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.meet-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #F8FAFC;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meet-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #34D399;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.meet-status-dot-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #10B981;
+  box-shadow: 0 0 8px #10B981;
+  animation: meetPulse 1.8s infinite;
+}
+
+@keyframes meetPulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.meet-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.meet-pill-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #94A3B8;
+  background: #0D1017;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.meet-mode-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #CBD5E1;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.meet-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
+}
+
+.meet-mode-btn.active {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #A5B4FC;
+}
+
+.btn-end-summarize {
+  background: linear-gradient(135deg, #059669 0%, #10B981 100%);
+  color: #FFFFFF;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+  transition: all 0.2s ease;
+}
+
+.btn-end-summarize:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.btn-end-summarize:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Workspace Canvas */
+.meet-workspace {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Left: Main Stage / Video Area */
+.meet-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #08090C;
+  position: relative;
+  overflow: hidden;
+}
+
+.meet-video-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.meet-video-tile {
+  width: 100%;
+  height: 100%;
+  max-width: 1100px;
+  max-height: 680px;
+  background: #0E121A;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.meet-video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* Mirror camera */
+}
+
+.meet-video-avatar-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: #64748B;
+}
+
+.meet-avatar-circle {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1E293B 0%, #334155 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 700;
+  color: #F1F5F9;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.meet-tile-tag {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: rgba(13, 16, 23, 0.75);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #F8FAFC;
+}
+
+/* Audio Level Visualizer Ring */
+.meet-waveform-ring {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 10px #10B981;
+}
+
+/* Subtitle Overlay Bar at Bottom of Video */
+.meet-subtitle-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 85%;
+  background: rgba(10, 12, 16, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 10px 20px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: #F8FAFC;
+  line-height: 1.4;
+  z-index: 10;
+  animation: subtitleFadeIn 0.3s ease;
+}
+
+@keyframes subtitleFadeIn {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.meet-subtitle-speaker {
+  font-weight: 700;
+  color: #818CF8;
+  white-space: nowrap;
+}
+
+/* Controls Toolbar (Bottom) */
+.meet-controls-bar {
+  height: 72px;
+  background: rgba(13, 16, 23, 0.95);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 24px;
+  flex-shrink: 0;
+}
+
+.meet-control-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #1E232E;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #F8FAFC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.meet-control-btn:hover {
+  background: #2D3748;
+  transform: scale(1.05);
+}
+
+.meet-control-btn.off {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #F87171;
+}
+
+.meet-control-btn.leave {
+  background: #DC2626;
+  border-color: #EF4444;
+  color: #FFFFFF;
+}
+
+.meet-control-btn.leave:hover {
+  background: #B91C1C;
+}
+
+/* Right: Intelligence & Live Transcripts Sidebar */
+.meet-sidebar {
+  width: 380px;
+  background: #0B0E14;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.3s ease;
+}
+
+.meet-sidebar-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.meet-sidebar-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #F1F5F9;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meet-lines-counter {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: #34D399;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.meet-transcripts-feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.meet-empty-transcript {
+  margin: auto;
+  text-align: center;
+  padding: 32px 16px;
+  color: #64748B;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.meet-transcript-card {
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #11151F;
+}
+
+.meet-transcript-card.self {
+  background: rgba(79, 70, 229, 0.12);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.meet-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.meet-card-speaker {
+  font-weight: 600;
+  font-size: 12px;
+  color: #818CF8;
+}
+
+.meet-card-speaker.other {
+  color: #34D399;
+}
+
+.meet-card-time {
+  font-size: 10px;
+  color: #64748B;
+  font-family: var(--font-mono, monospace);
+}
+
+.meet-card-text {
+  color: #CBD5E1;
+  margin: 0;
+}
+
+.meet-sidebar-footer {
+  padding: 14px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(13, 16, 23, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #94A3B8;
+}
+
+/* Jitsi Iframe Wrapper when in Jitsi Mode */
+.meet-jitsi-wrapper {
+  width: 100%;
+  height: 100%;
+  background: #000000;
+}
