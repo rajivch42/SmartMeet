@@ -452,6 +452,21 @@ export default function MeetingDetailPage() {
                 </a>
               </>
             )}
+            <span>•</span>
+            <Link
+              href={`/meet/${meeting.id}`}
+              className="mdetail-open-meet-link"
+              style={{
+                background: 'rgba(99, 102, 241, 0.2)',
+                borderColor: 'rgba(99, 102, 241, 0.5)',
+                color: '#C7D2FE',
+                fontWeight: 500,
+              }}
+              title="Launch In-App Video Room (live person-wise captions, zero bot blocking)"
+            >
+              <Video size={13} style={{ color: '#818CF8' }} />
+              <span>Launch In-App Room</span>
+            </Link>
           </div>
         </div>
 
